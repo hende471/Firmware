@@ -67,6 +67,11 @@
 #include <drivers/drv_hrt.h>
 #include <arch/board/board.h>
 #include <uORB/uORB.h>
+
+//Added for VPP:
+#include <uORB/topics/vehicle_attitude.h>
+//*******************
+
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/actuator_controls.h>
@@ -85,6 +90,7 @@
 #include <uORB/topics/sensor_correction.h>
 
 //Added for VPP:
+#include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/rc_channels.h>
 //*******************
 
@@ -189,6 +195,8 @@ private:
 	struct sensor_correction_s		_sensor_correction;		/**< sensor thermal corrections */
 
         /*Added for VPP:*/
+        struct sensor_combined_s                _sensor_combined;
+        struct vehicle_attitude_s                _v_att;
         struct rc_channels_s                    _rc_channels;
         //*******************
 
@@ -396,6 +404,16 @@ private:
 	void		task_main();
 
         /*Added for VPP:*/
+        /**
+         * Check for changes in combined sensor inputs.
+         */
+        void		sensor_combined_poll();
+
+        /**
+         * Check for changes in vehicle attitude.
+         */
+        void		vehicle_attitude_poll();
+
         /**
          * Check for changes in rc channels.
          */
@@ -865,6 +883,32 @@ MulticopterAttitudeControl::sensor_correction_poll()
 
 /*Added these functions for VPP:*/
 void
+MulticopterAttitudeControl::vehicle_attitude_poll()
+{
+    bool updated;
+
+    /* Check if vehicle attitude has changed */
+    orb_check(_v_att_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
+    }
+}
+
+void
+MulticopterAttitudeControl::sensor_combined_poll()
+{
+    bool updated;
+
+    /* Check if combined sensor values have changed */
+    orb_check(_sensor_combined_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(vehicle_attitude), _sensor_combined_sub, &_sensor_combined);
+    }
+}
+
+void
 MulticopterAttitudeControl::rc_channels_poll()
 {
     bool updated;
@@ -1127,6 +1171,8 @@ MulticopterAttitudeControl::task_main()
 	_battery_status_sub = orb_subscribe(ORB_ID(battery_status));
 
         /*Added for VPP:*/
+        _sensor_combined_sub = orb_subscribe(ORB_ID(sensor_combined));
+        _v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
         _rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
         //*******************
 
@@ -1147,19 +1193,19 @@ MulticopterAttitudeControl::task_main()
 	poll_fds.events = POLLIN;
 
         /*Added for VPP Testbed PID loop:*/
+        float aircraft_pitch = 0.0f;
         float vpp_thrust = 0.0f;    //initial value of thrust
-        //float vpp_setpoint = 0.0f;
-        //float arm_error_int = 0.0f;
-        /*float aircraft_pitch = 0.0f;
         float arm_error_prev = 0.0f;
+        float arm_error_int = 0.0f;
         float arm_error_der = 0.0f;
+        float vpp_setpoint = 0.0f;
         float arm_error = 0.0f;
         float vpp_kp = 0.4f;
         float vpp_ki = 0.8f;
-        float vpp_kd = 0.08f;*/
+        float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
-        /*float KapT3 = 2.95*pow(10,-7);
+        float KapT3 = 2.95*pow(10,-7);
         float k_beta = 60;
         float k_v = 0.0;
         float betaL0 = -1.37f; //calculated via SYS-ID method...questionable given how close it is to zero.
@@ -1178,12 +1224,12 @@ MulticopterAttitudeControl::task_main()
         float dI_dbeta = 0.0f;
         float dT_dbeta = 0.0f;
         float T = 0.0;
-        float deta_dbeta = 0.0f;*/
+        float deta_dbeta = 0.0f;
 
         float u_beta = 0.0f;
-        //float u_v = 0.0f;
-        //float I = 0.0f;
-        //float diff_const = 1.0*pow(10,0);
+        float u_v = 0.0f;
+        float I = 0.0f;
+        float diff_const = 1.0*pow(10,0);
 
         /*End*/
 
@@ -1236,6 +1282,8 @@ MulticopterAttitudeControl::task_main()
 			sensor_correction_poll();
 
                         /*Added for VPP:*/
+                        sensor_combined_poll();
+                        vehicle_attitude_poll();
                         rc_channels_poll();
                         //*******************
 
@@ -1331,14 +1379,14 @@ MulticopterAttitudeControl::task_main()
                                 //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
 
                                 if (_rc_channels.channels[4] > 0.0f){    //switch is down --> continuous setpoint
-                                    //vpp_setpoint = -_rc_channels.channels[1];
+                                    vpp_setpoint = -_rc_channels.channels[1];
                                 } else {    //setpoint switch is up --> discrete setpoints (two of them)
                                     if (_rc_channels.channels[1] < -0.2f) {
-                                        //vpp_setpoint = 0.3f;
+                                        vpp_setpoint = 0.3f;
                                     } else if (_rc_channels.channels[1] > 0.2f) {
-                                        //vpp_setpoint = -0.5f;
+                                        vpp_setpoint = -0.5f;
                                     } else {
-                                        //vpp_setpoint = 0.0f;
+                                        vpp_setpoint = 0.0f;
                                     }
 
 
@@ -1347,33 +1395,33 @@ MulticopterAttitudeControl::task_main()
                                 if (_rc_channels.channels[5] < -0.25f){  //if 3-way switch is down (away from pilot), write out vpp thrust commands
                                     //PID control equations:
                                     /*Note: Offset aircraft_pitch by +-pi/2...for testbed with futaba servo, use -pi/2*/
-                                    //aircraft_pitch = cos(asin(2.0f*(_ctrl_state.q[0]*_ctrl_state.q[2]-_ctrl_state.q[3]*_ctrl_state.q[1]))-3.14*0.5);
-                                    //arm_error = vpp_setpoint - aircraft_pitch;
-                                    //arm_error_int = arm_error_int+arm_error*dt;
-                                    //arm_error_der = (arm_error-arm_error_prev)/dt;
-                                    //arm_error_prev = arm_error;
-                                    //vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
+                                    aircraft_pitch = cos(asin(2.0f*(_ctrl_state.q[0]*_ctrl_state.q[2]-_ctrl_state.q[3]*_ctrl_state.q[1]))-3.14*0.5);
+                                    arm_error = vpp_setpoint - aircraft_pitch;
+                                    arm_error_int = arm_error_int+arm_error*dt;
+                                    arm_error_der = (arm_error-arm_error_prev)/dt;
+                                    arm_error_prev = arm_error;
+                                    vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
 
                                     //Peak-seeking equations:
-                                    //u_v = vpp_thrust;
-                                    //k_v = _battery_status.voltage_filtered_v;
-                                    //I = _battery_status.current_filtered_a;
-                                    //wsquare = pow((k_v*u_v-Rarmature*I)/ke,2.0);
-                                    //T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
-                                    //dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(k_v*u_v-Rarmature*I));
-                                    //dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
-                                    //deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
-                                    //u_beta = u_beta-deta_dbeta*delbeta;
+                                    u_v = vpp_thrust;
+                                    k_v = _battery_status.voltage_filtered_v;
+                                    I = _battery_status.current_filtered_a;
+                                    wsquare = pow((k_v*u_v-Rarmature*I)/ke,2.0);
+                                    T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
+                                    dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(k_v*u_v-Rarmature*I));
+                                    dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
+                                    deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
+                                    u_beta = u_beta-deta_dbeta*delbeta;
 
                                 } else if (_rc_channels.channels[5] > 0.25f) {    //if 3-way switch is up, write out manual commands
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                                     /*Also, reset arm integral error to zero*/
-                                    //arm_error_int = 0;
+                                    arm_error_int = 0;
                                     u_beta = -_rc_channels.channels[6];
                                 } else {    //If we are in the third (middle) option (Rattitude, perhaps), write out manual commands as well
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                                     /*Also, reset arm integral error to zero*/
-                                    //arm_error_int = 0;
+                                    arm_error_int = 0;
                                     u_beta = -_rc_channels.channels[6];
                                 }
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
