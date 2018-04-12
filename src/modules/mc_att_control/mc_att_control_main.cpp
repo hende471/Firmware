@@ -1147,6 +1147,7 @@ MulticopterAttitudeControl::task_main()
 
         /*Added for VPP:*/
         _rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
+        _esc_report_sub = orb_subscribe(ORB_ID(esc_report));
         //*******************
 
 	_gyro_count = math::min(orb_group_count(ORB_ID(sensor_gyro)), MAX_GYRO_COUNT);
@@ -1178,7 +1179,7 @@ MulticopterAttitudeControl::task_main()
         float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
-        /*float KapT3 = 2.95*pow(10,-7);
+        float KapT3 = 2.95*pow(10,-7);
         float k_beta = 60;
         float k_v = 0.0;
         float betaL0 = -1.37f; //calculated via SYS-ID method...questionable given how close it is to zero.
@@ -1197,12 +1198,12 @@ MulticopterAttitudeControl::task_main()
         float dI_dbeta = 0.0f;
         float dT_dbeta = 0.0f;
         float T = 0.0;
-        float deta_dbeta = 0.0f;*/
+        float deta_dbeta = 0.0f;
 
         float u_beta = 0.0f;
-        //float u_v = 0.0f;
-        //float I = 0.0f;
-        //float diff_const = 1.0*pow(10,0);
+        float u_v = 0.0f;
+        float I = 0.0f;
+        float diff_const = 1.0*pow(10,0);
 
         /*End*/
 
@@ -1256,6 +1257,7 @@ MulticopterAttitudeControl::task_main()
 
                         /*Added for VPP:*/
                         rc_channels_poll();
+                        esc_report_poll();
                         //*******************
 
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
@@ -1374,15 +1376,15 @@ MulticopterAttitudeControl::task_main()
                                     vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
 
                                     //Peak-seeking equations:
-                                    //u_v = vpp_thrust;
-                                    //k_v = _battery_status.voltage_filtered_v;
-                                    //I = _battery_status.current_filtered_a;
-                                    //wsquare = pow((k_v*u_v-Rarmature*I)/ke,2.0);
-                                    //T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
-                                    //dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(k_v*u_v-Rarmature*I));
-                                    //dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
-                                    //deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
-                                    //u_beta = u_beta-deta_dbeta*delbeta;
+                                    u_v = vpp_thrust;
+                                    k_v = _esc_report.esc_voltage;
+                                    I = _esc_report.esc_current;
+                                    wsquare = pow(_esc_report.esc_rpm*6.28f/60,2.0);
+                                    T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
+                                    dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(_esc_report.esc_rpm*6.28/(60*ke)));
+                                    dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
+                                    deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
+                                    u_beta = u_beta-deta_dbeta*delbeta;
 
                                 } else if (_rc_channels.channels[5] > 0.25f) {    //if 3-way switch is up, write out manual commands
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
