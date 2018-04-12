@@ -1381,7 +1381,7 @@ MulticopterAttitudeControl::task_main()
                                     I = _esc_report.esc_current;
                                     wsquare = pow(_esc_report.esc_rpm*6.28f/60,2.0);
                                     T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
-                                    dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(_esc_report.esc_rpm*6.28/(60*ke)));
+                                    dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(_esc_report.esc_rpm*6.28f/(60.0f*ke)));
                                     dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
                                     deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
                                     u_beta = u_beta-deta_dbeta*delbeta;
