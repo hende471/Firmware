@@ -86,6 +86,7 @@
 
 //Added for VPP:
 #include <uORB/topics/rc_channels.h>
+#include <uORB/topics/esc_report.h>
 //*******************
 
 #include <systemlib/param/param.h>
@@ -157,12 +158,11 @@ private:
 	int	_sensor_correction_sub;	/**< sensor thermal correction subscription */
 
         //Added for VPP:
-        int     _sensor_combined_sub;
-        int     _v_att_sub;
         int     _rc_channels_sub;
+        int     _esc_report_sub;
         //*******************
 
-	unsigned _gyro_count;
+        unsigned _gyro_count;
 	int _selected_gyro;
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
@@ -190,6 +190,7 @@ private:
 
         /*Added for VPP:*/
         struct rc_channels_s                    _rc_channels;
+        struct esc_report_s                     _esc_report;
         //*******************
 
 	union {
@@ -400,6 +401,11 @@ private:
          * Check for changes in rc channels.
          */
         void		rc_channels_poll();
+
+        /**
+         * Check for changes in esc report.
+         */
+        void		esc_report_poll();
         //*********************
 };
 
@@ -876,6 +882,19 @@ MulticopterAttitudeControl::rc_channels_poll()
             orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
     }
 }
+
+void
+MulticopterAttitudeControl::esc_report_poll()
+{
+    bool updated;
+
+    /* Check if rc channels have changed */
+    orb_check(_esc_report_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(esc_report), _esc_report_sub, &_esc_report);
+    }
+}
 /********************************/
 /**
  * Attitude controller.
@@ -1148,15 +1167,15 @@ MulticopterAttitudeControl::task_main()
 
         /*Added for VPP Testbed PID loop:*/
         float vpp_thrust = 0.0f;    //initial value of thrust
-        //float vpp_setpoint = 0.0f;
-        //float arm_error_int = 0.0f;
-        /*float aircraft_pitch = 0.0f;
+        float vpp_setpoint = 0.0f;
+        float arm_error_int = 0.0f;
+        float aircraft_pitch = 0.0f;
         float arm_error_prev = 0.0f;
         float arm_error_der = 0.0f;
         float arm_error = 0.0f;
         float vpp_kp = 0.4f;
         float vpp_ki = 0.8f;
-        float vpp_kd = 0.08f;*/
+        float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
         /*float KapT3 = 2.95*pow(10,-7);
@@ -1331,14 +1350,14 @@ MulticopterAttitudeControl::task_main()
                                 //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
 
                                 if (_rc_channels.channels[4] > 0.0f){    //switch is down --> continuous setpoint
-                                    //vpp_setpoint = -_rc_channels.channels[1];
+                                    vpp_setpoint = -_rc_channels.channels[1];
                                 } else {    //setpoint switch is up --> discrete setpoints (two of them)
                                     if (_rc_channels.channels[1] < -0.2f) {
-                                        //vpp_setpoint = 0.3f;
+                                        vpp_setpoint = 0.3f;
                                     } else if (_rc_channels.channels[1] > 0.2f) {
-                                        //vpp_setpoint = -0.5f;
+                                        vpp_setpoint = -0.5f;
                                     } else {
-                                        //vpp_setpoint = 0.0f;
+                                        vpp_setpoint = 0.0f;
                                     }
 
 
@@ -1347,12 +1366,12 @@ MulticopterAttitudeControl::task_main()
                                 if (_rc_channels.channels[5] < -0.25f){  //if 3-way switch is down (away from pilot), write out vpp thrust commands
                                     //PID control equations:
                                     /*Note: Offset aircraft_pitch by +-pi/2...for testbed with futaba servo, use -pi/2*/
-                                    //aircraft_pitch = cos(asin(2.0f*(_ctrl_state.q[0]*_ctrl_state.q[2]-_ctrl_state.q[3]*_ctrl_state.q[1]))-3.14*0.5);
-                                    //arm_error = vpp_setpoint - aircraft_pitch;
-                                    //arm_error_int = arm_error_int+arm_error*dt;
-                                    //arm_error_der = (arm_error-arm_error_prev)/dt;
-                                    //arm_error_prev = arm_error;
-                                    //vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
+                                    aircraft_pitch = cos(asin(2.0f*(_ctrl_state.q[0]*_ctrl_state.q[2]-_ctrl_state.q[3]*_ctrl_state.q[1]))-3.14*0.5);
+                                    arm_error = vpp_setpoint - aircraft_pitch;
+                                    arm_error_int = arm_error_int+arm_error*dt;
+                                    arm_error_der = (arm_error-arm_error_prev)/dt;
+                                    arm_error_prev = arm_error;
+                                    vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
 
                                     //Peak-seeking equations:
                                     //u_v = vpp_thrust;
@@ -1368,12 +1387,12 @@ MulticopterAttitudeControl::task_main()
                                 } else if (_rc_channels.channels[5] > 0.25f) {    //if 3-way switch is up, write out manual commands
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                                     /*Also, reset arm integral error to zero*/
-                                    //arm_error_int = 0;
+                                    arm_error_int = 0;
                                     u_beta = -_rc_channels.channels[6];
                                 } else {    //If we are in the third (middle) option (Rattitude, perhaps), write out manual commands as well
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                                     /*Also, reset arm integral error to zero*/
-                                    //arm_error_int = 0;
+                                    arm_error_int = 0;
                                     u_beta = -_rc_channels.channels[6];
                                 }
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
