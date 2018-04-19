@@ -1192,7 +1192,7 @@ MulticopterAttitudeControl::task_main()
         float k2 = 7.85*pow(10,-10);
         float k3 = -1.77*pow(10,-8);
         float Wtb = 0.412f*9.81f;
-        float delbeta = 0.5*pow(10,-9);
+        float delbeta = 0.5*pow(10,-8);
 
         float wsquare = 0.0f;
         float dI_dbeta = 0.0f;
@@ -1346,7 +1346,6 @@ MulticopterAttitudeControl::task_main()
 				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
 				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
 				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
-				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
                                 /*Added lines for p-control of VPP testbed system model:*/
                                 //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
