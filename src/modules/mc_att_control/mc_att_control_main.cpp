@@ -87,6 +87,7 @@
 //Added for VPP:
 #include <uORB/topics/rc_channels.h>
 #include <uORB/topics/esc_report.h>
+#include <uORB/topics/peakseek_status.h>
 //*******************
 
 #include <systemlib/param/param.h>
@@ -160,6 +161,7 @@ private:
         //Added for VPP:
         int     _rc_channels_sub;
         int     _esc_report_sub;
+        int     _peakseek_status_sub;
         //*******************
 
         unsigned _gyro_count;
@@ -168,6 +170,10 @@ private:
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
+
+        //Added for VPP:
+        orb_advert_t    _peakseek_status_pub;
+        //*******************
 
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -191,6 +197,7 @@ private:
         /*Added for VPP:*/
         struct rc_channels_s                    _rc_channels;
         struct esc_report_s                     _esc_report;
+        struct peakseek_status_s                _peakseek_status;
         //*******************
 
 	union {
@@ -406,6 +413,11 @@ private:
          * Check for changes in esc report.
          */
         void		esc_report_poll();
+
+        /**
+         * Check for changes in peak-seeking algorithm params.
+         */
+        void		peakseek_status_poll();
         //*********************
 };
 
@@ -440,7 +452,12 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_v_rates_sp_pub(nullptr),
 	_actuators_0_pub(nullptr),
 	_controller_status_pub(nullptr),
-	_rates_sp_id(0),
+
+        //Added for VPP:
+        _peakseek_status_pub(nullptr),
+        //*******************
+
+        _rates_sp_id(0),
 	_actuators_id(0),
 
 	_actuators_0_circuit_breaker_enabled(false),
@@ -888,11 +905,24 @@ MulticopterAttitudeControl::esc_report_poll()
 {
     bool updated;
 
-    /* Check if rc channels have changed */
+    /* Check if esc values have changed */
     orb_check(_esc_report_sub, &updated);
 
     if (updated) {
             orb_copy(ORB_ID(esc_report), _esc_report_sub, &_esc_report);
+    }
+}
+
+void
+MulticopterAttitudeControl::peakseek_status_poll()
+{
+    bool updated;
+
+    /* Check if peak-seeking params have changed */
+    orb_check(_peakseek_status_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(peakseek_status), _peakseek_status_sub, &_peakseek_status);
     }
 }
 /********************************/
@@ -1148,6 +1178,7 @@ MulticopterAttitudeControl::task_main()
         /*Added for VPP:*/
         _rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
         _esc_report_sub = orb_subscribe(ORB_ID(esc_report));
+        _peakseek_status_sub = orb_subscribe(ORB_ID(peakseek_status));
         //*******************
 
 	_gyro_count = math::min(orb_group_count(ORB_ID(sensor_gyro)), MAX_GYRO_COUNT);
@@ -1258,6 +1289,7 @@ MulticopterAttitudeControl::task_main()
                         /*Added for VPP:*/
                         rc_channels_poll();
                         esc_report_poll();
+                        peakseek_status_poll();
                         //*******************
 
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
@@ -1401,6 +1433,21 @@ MulticopterAttitudeControl::task_main()
 
                                 _actuators.control[4] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
                                 _actuators.control[5] = (PX4_ISFINITE(-_rc_channels.channels[6])) ? -_rc_channels.channels[6] : 0.0f;
+
+                                /* publish peakseek info */
+                                _peakseek_status.Thrust_est = T;
+                                _peakseek_status.dI_dbeta = dI_dbeta;
+                                _peakseek_status.dT_dbeta = dT_dbeta;
+                                _peakseek_status.deta_dbeta = deta_dbeta;
+                                _peakseek_status.delbeta = delbeta;
+                                _peakseek_status.timestamp = hrt_absolute_time();
+
+                                if (_peakseek_status_pub != nullptr) {
+                                        orb_publish(ORB_ID(peakseek_status), _peakseek_status_pub, &_peakseek_status);
+
+                                } else {
+                                        _peakseek_status_pub = orb_advertise(ORB_ID(peakseek_status), &_peakseek_status);
+                                }
                                 /*********End VPP addition**********/
 
 				_actuators.control[7] = _v_att_sp.landing_gear;
