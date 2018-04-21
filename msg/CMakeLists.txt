@@ -78,6 +78,7 @@ set(msg_file_names
 	optical_flow.msg
 	output_pwm.msg
 	parameter_update.msg
+	peakseek_status.msg
 	position_setpoint.msg
 	position_setpoint_triplet.msg
 	pwm_input.msg
