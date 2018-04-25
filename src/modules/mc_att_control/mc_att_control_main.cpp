@@ -1432,7 +1432,7 @@ MulticopterAttitudeControl::task_main()
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
                                 _actuators.control[4] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
-                                _actuators.control[5] = (PX4_ISFINITE(-_rc_channels.channels[6])) ? -_rc_channels.channels[6] : 0.0f;
+                                _actuators.control[5] = (PX4_ISFINITE(T)) ? T : 0.0f;
 
                                 /* publish peakseek info */
                                 _peakseek_status.Thrust_est = T;
