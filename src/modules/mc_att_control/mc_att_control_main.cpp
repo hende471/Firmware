@@ -1223,7 +1223,7 @@ MulticopterAttitudeControl::task_main()
         float k2 = 7.85*pow(10,-10);
         float k3 = -1.77*pow(10,-8);
         float Wtb = 0.412f*9.81f;
-        float delbeta = 0.5*pow(10,-8);
+        float delbeta = 0.9*pow(10,-7);
 
         float wsquare = 0.0f;
         float dI_dbeta = 0.0f;
@@ -1415,7 +1415,14 @@ MulticopterAttitudeControl::task_main()
                                     dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(_esc_report.esc_rpm*6.28f/(60.0f*ke)));
                                     dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
                                     deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
-                                    u_beta = u_beta-deta_dbeta*delbeta;
+                                    if ( fabsf(u_beta-deta_dbeta*delbeta)<1 ) {
+                                        u_beta = u_beta-deta_dbeta*delbeta;
+                                    } else if ((u_beta-deta_dbeta*delbeta)<=-1) {
+                                        u_beta = -1;
+                                    } else if ((u_beta-deta_dbeta*delbeta)>=1) {
+                                        u_beta = 1;
+                                    }
+
 
                                 } else if (_rc_channels.channels[5] > 0.25f) {    //if 3-way switch is up, write out manual commands
                                     vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
@@ -1432,7 +1439,7 @@ MulticopterAttitudeControl::task_main()
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
                                 _actuators.control[4] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
-                                _actuators.control[5] = (PX4_ISFINITE(T)) ? T : 0.0f;
+                                _actuators.control[5] = (PX4_ISFINITE(T/Wtb)) ? wsquare*( (float) pow(10,-6)) : 0.0f;
 
                                 /* publish peakseek info */
                                 _peakseek_status.Thrust_est = T;
