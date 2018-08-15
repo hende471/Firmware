@@ -1232,20 +1232,21 @@ MulticopterAttitudeControl::task_main()
         float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
-        float KapT3 = 2.95*pow(10,-7);
-        float k_beta = 60;
+        float KapT3 = 9.2032*pow(10,-7);
+        float k_beta = -17.5; //minus sign due to output signal getting inverted
         float k_v = 0.0;
-        float betaL0 = -1.37f; //calculated via SYS-ID method...questionable given how close it is to zero.
-        //float betaL0 = -10.0f;
-        float betaQ0 = 6.85f;
+        float betaL0 = -2.9671f;
+        //float betaL0 = 0.0944f;
+        float betaQ0 = -4.1527f;
         float Rarmature = 0.1f;
-        float ke = 20.0*pow(3,0.5)/(3.14*14.0*770.0);
+        //float ke = 20.0*pow(3,0.5)/(3.14*14.0*770.0); //from previous version of peakseek code; not sure if this is correct
+        float ke = 10.0*pow(3,0.5)/(3.14*770.0); //Agrees with SYS-ID code, probably correct
         float kt = 30.0f/(3.14f*770.0f);
 
         //float I0 = 0.5f;
 
-        float k2 = 7.85*pow(10,-10);
-        float k3 = -1.77*pow(10,-8);
+        float k2 = 2.9626*pow(10,-9);
+        float k3 = 4.8218*pow(10,-8);
         float Wtb = 0.412f*9.81f;
         float delbeta = 5*pow(10,-9);
 
