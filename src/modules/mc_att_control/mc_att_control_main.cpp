@@ -1248,7 +1248,7 @@ MulticopterAttitudeControl::task_main()
         float k2 = 2.9626*pow(10,-9);
         float k3 = 4.8218*pow(10,-8);
         float Wtb = 0.412f*9.81f;
-        float delbeta = 5*pow(10,-9);
+        float delbeta = 2*pow(10,-8);
 
         float wsquare = 0.0f;
         float dI_dbeta = 0.0f;
