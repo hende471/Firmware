@@ -1259,7 +1259,7 @@ MulticopterAttitudeControl::task_main()
         float u_beta = 0.0f;
         float u_v = 0.0f;
         float I = 0.0f;
-        float Power = 0.0f;
+        //float Power = 0.0f;
         float diff_const = 1.0*pow(10,0);
 
         /*End*/
@@ -1443,7 +1443,7 @@ MulticopterAttitudeControl::task_main()
                                         u_v = vpp_thrust;
                                         k_v = _esc_status.esc[0].esc_voltage;
                                         I = _esc_status.esc[0].esc_current;
-                                        Power = (k_v*I)/200.0f;
+                                       // Power = (k_v*I)/200.0f;
 
                                         T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
                                         dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(((float) _esc_status.esc[0].esc_rpm)*6.28f/(60.0f*ke)));
@@ -1470,7 +1470,7 @@ MulticopterAttitudeControl::task_main()
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
                                 _actuators.control[4] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
-                                _actuators.control[5] = (PX4_ISFINITE(Power)) ? Power : 0.0f;
+                                _actuators.control[5] = (PX4_ISFINITE(0.1f*dT_dbeta)) ? 0.1f*dT_dbeta : 0.0f;
 
                                 /* publish peakseek info */
                                 _peakseek_status.Thrust_est = T;
