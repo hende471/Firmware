@@ -36,16 +36,14 @@
 
 #include <px4_config.h>
 #include <px4_log.h>
+#include <px4_tasks.h>
 
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <systemlib/err.h>
-#include <systemlib/systemlib.h>
-#include <systemlib/param/param.h>
-#include <systemlib/mixer/mixer.h>
-#include <systemlib/board_serial.h>
-#include <systemlib/scheduling_priorities.h>
+#include <parameters/param.h>
+#include <lib/mixer/mixer.h>
 #include <version/version.h>
 #include <arch/board/board.h>
 #include <arch/chip/chip.h>
@@ -79,7 +77,7 @@ boot_app_shared_section app_descriptor_t AppDescriptor = {
 	.vcs_commit = 0,
 	.major_version = APP_VERSION_MAJOR,
 	.minor_version = APP_VERSION_MINOR,
-	.reserved = {0xff , 0xff , 0xff , 0xff , 0xff , 0xff }
+	.reserved = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff }
 };
 
 /*
@@ -137,18 +135,6 @@ int UavcanEsc::start(uavcan::NodeID node_id, uint32_t bitrate)
 		return -1;
 	}
 
-	/*
-	 * GPIO config.
-	 * Forced pull up on CAN2 is required for Pixhawk v1 where the second interface lacks a transceiver.
-	 * If no transceiver is connected, the RX pin will float, occasionally causing CAN controller to
-	 * fail during initialization.
-	 */
-	px4_arch_configgpio(GPIO_CAN1_RX);
-	px4_arch_configgpio(GPIO_CAN1_TX);
-#if defined(GPIO_CAN2_RX)
-	px4_arch_configgpio(GPIO_CAN2_RX | GPIO_PULLUP);
-	px4_arch_configgpio(GPIO_CAN2_TX);
-#endif
 	/*
 	 * CAN driver init
 	 */
@@ -231,9 +217,9 @@ void UavcanEsc::fill_node_info()
 	hwver.major = HW_VERSION_MAJOR;
 	hwver.minor = HW_VERSION_MINOR;
 
-	uint8_t udid[12] = {};  // Someone seems to love magic numbers
-	get_board_serial(udid);
-	uavcan::copy(udid, udid + sizeof(udid), hwver.unique_id.begin());
+	mfguid_t mfgid = {};
+	board_get_mfguid(mfgid);
+	uavcan::copy(mfgid, mfgid + sizeof(mfgid), hwver.unique_id.begin());
 
 	_node.setHardwareVersion(hwver);
 }
@@ -261,7 +247,7 @@ void UavcanEsc::cb_beginfirmware_update(const uavcan::ReceivedDataStructure<Uavc
 			shared.bus_speed = active_bitrate;
 			shared.node_id = _node.getNodeID().get();
 			bootloader_app_shared_write(&shared, App);
-			rgb_led(255, 128 , 0 , 5);
+			rgb_led(255, 128, 0, 5);
 			_reset_timer.setCallback(cb_reboot);
 			_reset_timer.startOneShotWithDelay(uavcan::MonotonicDuration::fromMSec(1000));
 			rsp.error = rsp.ERROR_OK;

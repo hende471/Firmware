@@ -44,7 +44,7 @@
 
 #include <px4_config.h>
 
-#include <uavcan_stm32/uavcan_stm32.hpp>
+#include "uavcan_driver.hpp"
 #include <uavcan/helpers/heap_based_pool_allocator.hpp>
 #include <uavcan/protocol/global_time_sync_master.hpp>
 #include <uavcan/protocol/global_time_sync_slave.hpp>
@@ -54,7 +54,7 @@
 #include <uavcan/protocol/RestartNode.hpp>
 
 #include <drivers/device/device.h>
-#include <systemlib/perf_counter.h>
+#include <perf/perf_counter.h>
 
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_outputs.h>
@@ -103,8 +103,8 @@ class UavcanNode : public device::CDev
 	static constexpr unsigned StackSize		= 2400;
 
 public:
-	typedef uavcan_stm32::CanInitHelper<RxQueueLenPerIface> CanInitHelper;
-	enum eServerAction {None, Start, Stop, CheckFW , Busy};
+	typedef UAVCAN_DRIVER::CanInitHelper<RxQueueLenPerIface> CanInitHelper;
+	enum eServerAction {None, Start, Stop, CheckFW, Busy};
 
 	UavcanNode(uavcan::ICanDriver &can_driver, uavcan::ISystemClock &system_clock);
 
@@ -152,6 +152,7 @@ private:
 	int		request_fw_check();
 	int		print_params(uavcan::protocol::param::GetSet::Response &resp);
 	int		get_set_param(int nodeid, const char *name, uavcan::protocol::param::GetSet::Request &req);
+	void 		update_params();
 	void		set_setget_response(uavcan::protocol::param::GetSet::Response *resp)
 	{
 		_setget_response = resp;
@@ -194,11 +195,12 @@ private:
 	ITxQueueInjector		*_tx_injector;
 	uint32_t			_groups_required = 0;
 	uint32_t			_groups_subscribed = 0;
-	int				_control_subs[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN] = {};
+	int				_control_subs[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN];
 	actuator_controls_s		_controls[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN] = {};
 	orb_id_t			_control_topics[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN] = {};
 	pollfd				_poll_fds[UAVCAN_NUM_POLL_FDS] = {};
 	unsigned			_poll_fds_num = 0;
+	int32_t 			_idle_throttle_when_armed = 0;
 
 	int				_actuator_direct_sub = -1;   ///< uORB subscription of the actuator_direct topic
 	uint8_t				_actuator_direct_poll_fd_num = 0;
@@ -206,12 +208,12 @@ private:
 
 	actuator_outputs_s		_outputs = {};
 
+	perf_counter_t			_perf_control_latency;
+
+	bool 				_airmode = false;
+
 	// index into _poll_fds for each _control_subs handle
 	uint8_t				_poll_ids[NUM_ACTUATOR_CONTROL_GROUPS_UAVCAN];
-
-	perf_counter_t _perfcnt_node_spin_elapsed		= perf_alloc(PC_ELAPSED, "uavcan_node_spin_elapsed");
-	perf_counter_t _perfcnt_esc_mixer_output_elapsed	= perf_alloc(PC_ELAPSED, "uavcan_esc_mixer_output_elapsed");
-	perf_counter_t _perfcnt_esc_mixer_total_elapsed		= perf_alloc(PC_ELAPSED, "uavcan_esc_mixer_total_elapsed");
 
 	void handle_time_sync(const uavcan::TimerEvent &);
 

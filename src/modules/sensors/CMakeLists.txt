@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2015-2016 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2015-2017 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -41,11 +41,15 @@ px4_add_module(
 		voted_sensors_update.cpp
 		rc_update.cpp
 		sensors.cpp
-		sensors_init.cpp
 		parameters.cpp
 		temperature_compensation.cpp
 
 	DEPENDS
-		platforms__common
+		airspeed
+		battery
+		conversion
+		drivers__device
+		git_ecl
+		ecl_validation
+		mathlib
 	)
-# vim: set noet ft=cmake fenc=utf-8 ff=unix :

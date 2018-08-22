@@ -1,19 +1,19 @@
 #!nsh
 #
-# Standard apps for vtol:
-# att & pos estimator, att & pos control.
+# Standard apps for vtol: Attitude/Position estimator, Attitude/Position control.
 #
+# NOTE: Script variables are declared/initialized/unset in the rcS script.
 #
 
+###############################################################################
+#                       Begin Estimator group selection                       #
+###############################################################################
 
-#---------------------------------------
-# Estimator group selction
-#
 # INAV (deprecated)
 if param compare SYS_MC_EST_GROUP 0
 then
-	echo "ERROR [init] Estimator INAV deprecated. Using LPE"
-	param set SYS_MC_EST_GROUP 1
+	echo "ERROR [init] Estimator INAV deprecated. Using EKF2"
+	param set SYS_MC_EST_GROUP 2
 	param save
 fi
 
@@ -21,12 +21,14 @@ fi
 if param compare SYS_MC_EST_GROUP 1
 then
 	# Try to start LPE. If it fails, start EKF2 as a default
-	# Unfortunately we do not build it on px4fmu-v2 duo to a limited flash.
+	# Unfortunately we do not build it on px4fmu-v2 due to a limited flash.
 	if attitude_estimator_q start
 	then
 		local_position_estimator start
 	else
-		ekf2 start
+		echo "ERROR [init] Estimator LPE not available. Using EKF2"
+		param set SYS_MC_EST_GROUP 2
+		param save
 	fi
 fi
 
@@ -35,7 +37,10 @@ if param compare SYS_MC_EST_GROUP 2
 then
 	ekf2 start
 fi
-#---------------------------------------
+
+###############################################################################
+#                        End Estimator group selection                        #
+###############################################################################
 
 
 vtol_att_control start
@@ -49,3 +54,4 @@ fw_pos_control_l1 start
 # Multicopter for now until we have something for VTOL
 #
 land_detector start vtol
+

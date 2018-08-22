@@ -1,7 +1,5 @@
-
-						# is set whenever the writing thread stores new data
-
-bool flag_armed
+uint64 timestamp		# time since system start (microseconds)
+bool flag_armed			# is set whenever the writing thread stores new data
 
 bool flag_external_manual_override_ok		# external override non-fatal for system. Only true for fixed wing
 
@@ -21,3 +19,4 @@ bool flag_control_position_enabled		# true if position is controlled
 bool flag_control_altitude_enabled		# true if altitude is controlled
 bool flag_control_climb_rate_enabled		# true if climb rate is controlled
 bool flag_control_termination_enabled		# true if flighttermination is enabled
+bool flag_control_fixed_hdg_enabled			# true if using a fixed heading for user control

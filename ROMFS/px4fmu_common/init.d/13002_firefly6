@@ -2,7 +2,10 @@
 #
 # @name BirdsEyeView Aerobotics FireFly6
 # @type VTOL Tiltrotor
+# @class VTOL
+#
 # @maintainer Roman Bapst <roman@uaventure.com>
+#
 # @output MAIN1 Front right motor bottom
 # @output MAIN2 Front right motor top
 # @output MAIN3 Back motor bottom
@@ -30,7 +33,6 @@ then
 	param set MC_PITCHRATE_D 0.004
 	param set MC_PITCHRATE_FF 0.0
 	param set MC_YAW_P 4.0
-	param set MC_YAW_FF 0.5
 	param set MC_YAWRATE_P 0.22
 	param set MC_YAWRATE_I 0.02
 	param set MC_YAWRATE_D 0.0
