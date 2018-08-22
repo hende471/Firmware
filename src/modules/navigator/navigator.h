@@ -351,9 +351,8 @@ private:
 		(ParamFloat<px4::params::MIS_YAW_ERR>) _param_yaw_err,
 
 		// VTOL parameters TODO: get these out of navigator
-		//Commented out by Travis Henderson, 8/21/18		
-		//(ParamFloat<px4::params::VT_B_DEC_MSS>) _param_back_trans_dec_mss,
-		//(ParamFloat<px4::params::VT_B_REV_DEL>) _param_reverse_delay
+		(ParamFloat<px4::params::VT_B_DEC_MSS>) _param_back_trans_dec_mss,
+		(ParamFloat<px4::params::VT_B_REV_DEL>) _param_reverse_delay
 	)
 
 	float _mission_cruising_speed_mc{-1.0f};

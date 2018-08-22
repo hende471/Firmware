@@ -710,7 +710,7 @@ MulticopterAttitudeControl::run()
         float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
-        float KapT3 = 9.2032*pow(10,-7);
+        float KapT3 = 9.2032f*pow(10,-7.0f);
         float k_beta = -17.5; //minus sign due to output signal getting inverted
         float k_v = 0.0;
         float betaL0 = -2.9671f;
@@ -718,15 +718,15 @@ MulticopterAttitudeControl::run()
         float betaQ0 = -4.1527f;
         float Rarmature = 0.1f;
         //float ke = 20.0*pow(3,0.5)/(3.14*14.0*770.0); //from previous version of peakseek code; not sure if this is correct
-        float ke = 10.0*pow(3,0.5)/(3.14*770.0); //Agrees with SYS-ID code, probably correct
+        float ke = 10.0f*pow(3,0.5f)/(3.14f*770.0f); //Agrees with SYS-ID code, probably correct
         float kt = 30.0f/(3.14f*770.0f);
 
         //float I0 = 0.5f;
 
-        float k2 = 2.9626*pow(10,-9);
-        float k3 = 4.8218*pow(10,-8);
+        float k2 = 2.9626f*pow(10,-9.0f);
+        float k3 = 4.8218f*pow(10,-8.0f);
         float Wtb = 0.412f*9.81f;
-        float delbeta = 2*pow(10,-8);
+        float delbeta = 2.0f*pow(10,-8.0f);
 
         float wsquare = 0.0f;
         float dI_dbeta = 0.0f;
@@ -738,7 +738,7 @@ MulticopterAttitudeControl::run()
         float u_v = 0.0f;
         float I = 0.0f;
         //float Power = 0.0f;
-        float diff_const = 1.0*pow(10,0);
+        float diff_const = 1.0f*pow(10,0.0f);
 
         /*End*/
 
@@ -900,7 +900,7 @@ MulticopterAttitudeControl::run()
                                 if (_rc_channels.channels[5] < 0.25f){  //if 3-way switch is not down (not away from pilot), do rpm control
                                     //PID control equations:
                                     /*Note: Offset aircraft_pitch by +-pi/2...for testbed with futaba servo, use -pi/2*/
-                                    aircraft_pitch = cos(asin(2.0f*(_ctrl_state.q[0]*_ctrl_state.q[2]-_ctrl_state.q[3]*_ctrl_state.q[1]))-3.14*0.5);
+                                    aircraft_pitch = cos(asin(2.0f*(_v_att.q[0]*_v_att.q[2]-_v_att.q[3]*_v_att.q[1]))-3.14f*0.5f);
                                     arm_error = vpp_setpoint - aircraft_pitch;
                                     arm_error_int = arm_error_int+arm_error*dt;
                                     arm_error_der = (arm_error-arm_error_prev)/dt;
@@ -917,7 +917,7 @@ MulticopterAttitudeControl::run()
                                        // Power = (k_v*I)/200.0f;
 
                                         T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
-                                        dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0))/(kt*((float) pow(ke,2.0))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0))+k3)*(((float) _esc_status.esc[0].esc_rpm)*6.28f/(60.0f*ke)));
+                                        dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0f))/(kt*((float) pow(ke,2.0f))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0f))+k3)*(((float) _esc_status.esc[0].esc_rpm)*6.28f/(60.0f*ke)));
                                         dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
                                         deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
                                         /*Saturation limits on the propeller pitch angle*/
@@ -932,7 +932,8 @@ MulticopterAttitudeControl::run()
                                         u_beta = -_rc_channels.channels[6];
                                     }
                                 } else {    //If we are in the third (middle) option (Rattitude, perhaps), write out manual commands as well
-                                    vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
+                                    //vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
+                                    vpp_thrust = _manual_control_sp.z;
                                     /*Also, reset arm integral error to zero*/
                                     arm_error_int = 0;
                                     u_beta = -_rc_channels.channels[6];

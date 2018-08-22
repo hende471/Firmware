@@ -161,7 +161,7 @@ private:
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
 
         //Added for VPP:
-        orb_advert_t    _peakseek_status_pub(nullptr);
+        orb_advert_t    _peakseek_status_pub{nullptr};
         //*******************
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
