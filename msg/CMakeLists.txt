@@ -80,11 +80,8 @@ set(msg_files
 	offboard_control_mode.msg
 	optical_flow.msg
 	parameter_update.msg
-<<<<<<< HEAD
 	peakseek_status.msg
-=======
 	ping.msg
->>>>>>> origin/master
 	position_setpoint.msg
 	position_setpoint_triplet.msg
 	power_button_state.msg

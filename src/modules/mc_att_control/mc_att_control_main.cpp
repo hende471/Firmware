@@ -43,57 +43,13 @@
  *
  */
 
-<<<<<<< HEAD
-#include <px4_config.h>
-#include <px4_defines.h>
-#include <px4_tasks.h>
-#include <px4_posix.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <math.h>
-#include <poll.h>
-#include <drivers/drv_hrt.h>
-#include <arch/board/board.h>
-#include <uORB/uORB.h>
-#include <uORB/topics/vehicle_attitude_setpoint.h>
-#include <uORB/topics/manual_control_setpoint.h>
-#include <uORB/topics/actuator_controls.h>
-#include <uORB/topics/vehicle_rates_setpoint.h>
-#include <uORB/topics/fw_virtual_rates_setpoint.h>
-#include <uORB/topics/mc_virtual_rates_setpoint.h>
-#include <uORB/topics/control_state.h>
-#include <uORB/topics/vehicle_control_mode.h>
-#include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/actuator_armed.h>
-#include <uORB/topics/parameter_update.h>
-#include <uORB/topics/multirotor_motor_limits.h>
-#include <uORB/topics/mc_att_ctrl_status.h>
-#include <uORB/topics/battery_status.h>
-#include <uORB/topics/sensor_gyro.h>
-#include <uORB/topics/sensor_correction.h>
-
 //Added for VPP:
 #include <uORB/topics/rc_channels.h>
 #include <uORB/topics/esc_report.h>
 #include <uORB/topics/esc_status.h>
 #include <uORB/topics/peakseek_status.h>
 //*******************
-
-#include <systemlib/param/param.h>
-#include <systemlib/err.h>
-#include <systemlib/perf_counter.h>
-#include <systemlib/systemlib.h>
-#include <systemlib/circuit_breaker.h>
-#include <lib/mathlib/mathlib.h>
-#include <lib/geo/geo.h>
-#include <lib/tailsitter_recovery/tailsitter_recovery.h>
-#include <conversion/rotation.h>
-=======
 #include "mc_att_control.hpp"
->>>>>>> origin/master
 
 #include <conversion/rotation.h>
 #include <drivers/drv_hrt.h>
@@ -109,241 +65,7 @@
 #define AXIS_INDEX_YAW 2
 #define AXIS_COUNT 3
 
-<<<<<<< HEAD
-#define MAX_GYRO_COUNT 3
-
-class MulticopterAttitudeControl
-{
-public:
-	/**
-	 * Constructor
-	 */
-	MulticopterAttitudeControl();
-
-	/**
-	 * Destructor, also kills the main task
-	 */
-	~MulticopterAttitudeControl();
-
-	/**
-	 * Start the multicopter attitude control task.
-	 *
-	 * @return		OK on success.
-	 */
-	int		start();
-
-private:
-
-	bool	_task_should_exit;		/**< if true, task_main() should exit */
-	int		_control_task;			/**< task handle */
-
-	int		_ctrl_state_sub;		/**< control state subscription */
-	int		_v_att_sp_sub;			/**< vehicle attitude setpoint subscription */
-	int		_v_rates_sp_sub;		/**< vehicle rates setpoint subscription */
-	int		_v_control_mode_sub;	/**< vehicle control mode subscription */
-	int		_params_sub;			/**< parameter updates subscription */
-	int		_manual_control_sp_sub;	/**< manual control setpoint subscription */
-	int		_armed_sub;				/**< arming status subscription */
-	int		_vehicle_status_sub;	/**< vehicle status subscription */
-	int 	_motor_limits_sub;		/**< motor limits subscription */
-	int 	_battery_status_sub;	/**< battery status subscription */
-	int	_sensor_gyro_sub[MAX_GYRO_COUNT];	/**< gyro data subscription */
-	int	_sensor_correction_sub;	/**< sensor thermal correction subscription */
-
-        //Added for VPP:
-        int     _rc_channels_sub;
-        int     _esc_report_sub;
-        int     _esc_status_sub;
-        int     _peakseek_status_sub;
-        //*******************
-
-        unsigned _gyro_count;
-	int _selected_gyro;
-
-	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
-	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
-	orb_advert_t	_controller_status_pub;	/**< controller status publication */
-
-        //Added for VPP:
-        orb_advert_t    _peakseek_status_pub;
-        //*******************
-
-	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
-	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
-
-	bool		_actuators_0_circuit_breaker_enabled;	/**< circuit breaker to suppress output */
-
-	struct control_state_s				_ctrl_state;		/**< control state */
-	struct vehicle_attitude_setpoint_s	_v_att_sp;			/**< vehicle attitude setpoint */
-	struct vehicle_rates_setpoint_s		_v_rates_sp;		/**< vehicle rates setpoint */
-	struct manual_control_setpoint_s	_manual_control_sp;	/**< manual control setpoint */
-	struct vehicle_control_mode_s		_v_control_mode;	/**< vehicle control mode */
-	struct actuator_controls_s			_actuators;			/**< actuator controls */
-	struct actuator_armed_s				_armed;				/**< actuator arming status */
-	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
-	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
-	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
-	struct battery_status_s				_battery_status;	/**< battery status */
-	struct sensor_gyro_s			_sensor_gyro;		/**< gyro data before thermal correctons and ekf bias estimates are applied */
-	struct sensor_correction_s		_sensor_correction;		/**< sensor thermal corrections */
-
-        /*Added for VPP:*/
-        struct rc_channels_s                    _rc_channels;
-        struct esc_report_s                     _esc_report;
-        struct esc_status_s                     _esc_status;
-        struct peakseek_status_s                _peakseek_status;
-        //*******************
-
-	union {
-		struct {
-			uint16_t motor_pos	: 1; // 0 - true when any motor has saturated in the positive direction
-			uint16_t motor_neg	: 1; // 1 - true when any motor has saturated in the negative direction
-			uint16_t roll_pos	: 1; // 2 - true when a positive roll demand change will increase saturation
-			uint16_t roll_neg	: 1; // 3 - true when a negative roll demand change will increase saturation
-			uint16_t pitch_pos	: 1; // 4 - true when a positive pitch demand change will increase saturation
-			uint16_t pitch_neg	: 1; // 5 - true when a negative pitch demand change will increase saturation
-			uint16_t yaw_pos	: 1; // 6 - true when a positive yaw demand change will increase saturation
-			uint16_t yaw_neg	: 1; // 7 - true when a negative yaw demand change will increase saturation
-			uint16_t thrust_pos	: 1; // 8 - true when a positive thrust demand change will increase saturation
-			uint16_t thrust_neg	: 1; // 9 - true when a negative thrust demand change will increase saturation
-		} flags;
-		uint16_t value;
-	} _saturation_status;
-
-	perf_counter_t	_loop_perf;			/**< loop performance counter */
-	perf_counter_t	_controller_latency_perf;
-
-	math::Vector<3>		_rates_prev;	/**< angular rates on previous step */
-	math::Vector<3>		_rates_sp_prev; /**< previous rates setpoint */
-	math::Vector<3>		_rates_sp;		/**< angular rates setpoint */
-	math::Vector<3>		_rates_int;		/**< angular rates integral error */
-	float				_thrust_sp;		/**< thrust setpoint */
-	math::Vector<3>		_att_control;	/**< attitude control vector */
-
-	math::Matrix<3, 3>  _I;				/**< identity matrix */
-
-	math::Matrix<3, 3>	_board_rotation = {};	/**< rotation matrix for the orientation that the board is mounted */
-
-	struct {
-		param_t roll_p;
-		param_t roll_rate_p;
-		param_t roll_rate_i;
-		param_t roll_rate_integ_lim;
-		param_t roll_rate_d;
-		param_t roll_rate_ff;
-		param_t pitch_p;
-		param_t pitch_rate_p;
-		param_t pitch_rate_i;
-		param_t pitch_rate_integ_lim;
-		param_t pitch_rate_d;
-		param_t pitch_rate_ff;
-		param_t tpa_breakpoint_p;
-		param_t tpa_breakpoint_i;
-		param_t tpa_breakpoint_d;
-		param_t tpa_rate_p;
-		param_t tpa_rate_i;
-		param_t tpa_rate_d;
-		param_t yaw_p;
-		param_t yaw_rate_p;
-		param_t yaw_rate_i;
-		param_t yaw_rate_integ_lim;
-		param_t yaw_rate_d;
-		param_t yaw_rate_ff;
-		param_t yaw_ff;
-		param_t roll_rate_max;
-		param_t pitch_rate_max;
-		param_t yaw_rate_max;
-		param_t yaw_auto_max;
-
-		param_t acro_roll_max;
-		param_t acro_pitch_max;
-		param_t acro_yaw_max;
-		param_t rattitude_thres;
-
-		param_t vtol_type;
-		param_t roll_tc;
-		param_t pitch_tc;
-		param_t vtol_opt_recovery_enabled;
-		param_t vtol_wv_yaw_rate_scale;
-
-		param_t bat_scale_en;
-
-		param_t board_rotation;
-
-		param_t board_offset[3];
-
-	}		_params_handles;		/**< handles for interesting parameters */
-
-	struct {
-		math::Vector<3> att_p;					/**< P gain for angular error */
-		math::Vector<3> rate_p;				/**< P gain for angular rate error */
-		math::Vector<3> rate_i;				/**< I gain for angular rate error */
-		math::Vector<3> rate_int_lim;			/**< integrator state limit for rate loop */
-		math::Vector<3> rate_d;				/**< D gain for angular rate error */
-		math::Vector<3>	rate_ff;			/**< Feedforward gain for desired rates */
-		float yaw_ff;						/**< yaw control feed-forward */
-
-		float tpa_breakpoint_p;				/**< Throttle PID Attenuation breakpoint */
-		float tpa_breakpoint_i;				/**< Throttle PID Attenuation breakpoint */
-		float tpa_breakpoint_d;				/**< Throttle PID Attenuation breakpoint */
-		float tpa_rate_p;					/**< Throttle PID Attenuation slope */
-		float tpa_rate_i;					/**< Throttle PID Attenuation slope */
-		float tpa_rate_d;					/**< Throttle PID Attenuation slope */
-
-		float roll_rate_max;
-		float pitch_rate_max;
-		float yaw_rate_max;
-		float yaw_auto_max;
-		math::Vector<3> mc_rate_max;		/**< attitude rate limits in stabilized modes */
-		math::Vector<3> auto_rate_max;		/**< attitude rate limits in auto modes */
-		math::Vector<3> acro_rate_max;		/**< max attitude rates in acro mode */
-		float rattitude_thres;
-		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
-		bool vtol_opt_recovery_enabled;
-		float vtol_wv_yaw_rate_scale;			/**< Scale value [0, 1] for yaw rate setpoint  */
-
-		int bat_scale_en;
-
-		int board_rotation;
-
-		float board_offset[3];
-
-	}		_params;
-
-	TailsitterRecovery *_ts_opt_recovery;	/**< Computes optimal rates for tailsitter recovery */
-
-	/**
-	 * Update our local parameter cache.
-	 */
-	int			parameters_update();
-
-	/**
-	 * Check for parameter update and handle it.
-	 */
-	void		parameter_update_poll();
-
-	/**
-	 * Check for changes in vehicle control mode.
-	 */
-	void		vehicle_control_mode_poll();
-
-	/**
-	 * Check for changes in manual inputs.
-	 */
-	void		vehicle_manual_poll();
-
-	/**
-	 * Check for attitude setpoint updates.
-	 */
-	void		vehicle_attitude_setpoint_poll();
-
-	/**
-	 * Check for rates setpoint updates.
-	 */
-	void		vehicle_rates_setpoint_poll();
-=======
 using namespace matrix;
->>>>>>> origin/master
 
 
 int MulticopterAttitudeControl::print_usage(const char *reason)
@@ -377,104 +99,11 @@ To reduce control latency, the module directly polls on the gyro topic published
 	PRINT_MODULE_USAGE_COMMAND("start");
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
-<<<<<<< HEAD
-	/**
-	 * Shim for calling task_main from task_create.
-	 */
-	static void	task_main_trampoline(int argc, char *argv[]);
-
-	/**
-	 * Main attitude control task.
-	 */
-	void		task_main();
-
-        /*Added for VPP:*/
-        /**
-         * Check for changes in rc channels.
-         */
-        void		rc_channels_poll();
-
-        /**
-         * Check for changes in esc report.
-         */
-        void		esc_report_poll();
-
-        /**
-         * Check for changes in esc status.
-         */
-        void		esc_status_poll();
-
-        /**
-         * Check for changes in peak-seeking algorithm params.
-         */
-        void		peakseek_status_poll();
-        //*********************
-};
-
-namespace mc_att_control
-{
-
-MulticopterAttitudeControl	*g_control;
-}
-
-MulticopterAttitudeControl::MulticopterAttitudeControl() :
-
-	_task_should_exit(false),
-	_control_task(-1),
-
-	/* subscriptions */
-	_ctrl_state_sub(-1),
-	_v_att_sp_sub(-1),
-	_v_control_mode_sub(-1),
-	_params_sub(-1),
-	_manual_control_sp_sub(-1),
-	_armed_sub(-1),
-	_vehicle_status_sub(-1),
-	_motor_limits_sub(-1),
-	_battery_status_sub(-1),
-	_sensor_correction_sub(-1),
-
-	/* gyro selection */
-	_gyro_count(1),
-	_selected_gyro(0),
-
-	/* publications */
-	_v_rates_sp_pub(nullptr),
-	_actuators_0_pub(nullptr),
-	_controller_status_pub(nullptr),
-
-        //Added for VPP:
-        _peakseek_status_pub(nullptr),
-        //*******************
-
-        _rates_sp_id(0),
-	_actuators_id(0),
-
-	_actuators_0_circuit_breaker_enabled(false),
-
-	_ctrl_state{},
-	_v_att_sp{},
-	_v_rates_sp{},
-	_manual_control_sp{},
-	_v_control_mode{},
-	_actuators{},
-	_armed{},
-	_vehicle_status{},
-	_motor_limits{},
-	_controller_status{},
-	_battery_status{},
-	_sensor_gyro{},
-	_sensor_correction{},
-
-	_saturation_status{},
-	/* performance counters */
-=======
 	return 0;
 }
 
 MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	ModuleParams(nullptr),
->>>>>>> origin/master
 	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control")),
 	_lp_filters_d{
 	{initial_update_rate_hz, 50.f},
@@ -721,7 +350,6 @@ MulticopterAttitudeControl::sensor_correction_poll()
 	}
 }
 
-<<<<<<< HEAD
 /*Added these functions for VPP:*/
 void
 MulticopterAttitudeControl::rc_channels_poll()
@@ -775,7 +403,6 @@ MulticopterAttitudeControl::peakseek_status_poll()
     }
 }
 /********************************/
-=======
 void
 MulticopterAttitudeControl::sensor_bias_poll()
 {
@@ -802,7 +429,6 @@ MulticopterAttitudeControl::vehicle_land_detected_poll()
 
 }
 
->>>>>>> origin/master
 /**
  * Attitude controller.
  * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
@@ -1071,7 +697,6 @@ MulticopterAttitudeControl::run()
 	px4_pollfd_struct_t poll_fds = {};
 	poll_fds.events = POLLIN;
 
-<<<<<<< HEAD
         /*Added for VPP Testbed PID loop:*/
         float vpp_thrust = 0.0f;    //initial value of thrust
         float vpp_setpoint = 0.0f;
@@ -1117,8 +742,6 @@ MulticopterAttitudeControl::run()
 
         /*End*/
 
-	while (!_task_should_exit) {
-=======
 	const hrt_abstime task_start = hrt_absolute_time();
 	hrt_abstime last_run = task_start;
 	float dt_accumulator = 0.f;
@@ -1127,7 +750,7 @@ MulticopterAttitudeControl::run()
 	while (!should_exit()) {
 
 		poll_fds.fd = _sensor_gyro_sub[_selected_gyro];
->>>>>>> origin/master
+
 
 		/* wait for up to 100ms for data */
 		int pret = px4_poll(&poll_fds, 1, 100);
@@ -1321,9 +944,9 @@ MulticopterAttitudeControl::run()
                                 _actuators.control[5] = (PX4_ISFINITE(0.1f*dT_dbeta)) ? 0.1f*dT_dbeta : 0.0f;
 
                                 /* publish peakseek info */
-                                _peakseek_status.Thrust_est = T;
-                                _peakseek_status.dI_dbeta = dI_dbeta;
-                                _peakseek_status.dT_dbeta = dT_dbeta;
+                                _peakseek_status.thrust_est = T;
+                                _peakseek_status.di_dbeta = dI_dbeta;
+                                _peakseek_status.dt_dbeta = dT_dbeta;
                                 _peakseek_status.deta_dbeta = deta_dbeta;
                                 _peakseek_status.delbeta = delbeta;
                                 _peakseek_status.timestamp = hrt_absolute_time();

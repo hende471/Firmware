@@ -109,6 +109,12 @@ private:
 	void		vehicle_motor_limits_poll();
 	void		vehicle_rates_setpoint_poll();
 	void		vehicle_status_poll();
+        /*Added for VPP:*/
+        void		rc_channels_poll();
+        void		esc_report_poll();
+        void		esc_status_poll();
+        void		peakseek_status_poll();
+        //*********************
 
 	/**
 	 * Attitude controller.
@@ -140,12 +146,23 @@ private:
 	int		_sensor_bias_sub{-1};		/**< sensor in-run bias correction subscription */
 	int		_vehicle_land_detected_sub{-1};	/**< vehicle land detected subscription */
 
+        //Added for VPP:
+        int     _rc_channels_sub;
+        int     _esc_report_sub;
+        int     _esc_status_sub;
+        int     _peakseek_status_sub;
+        //*******************
+
 	unsigned _gyro_count{1};
 	int _selected_gyro{0};
 
 	orb_advert_t	_v_rates_sp_pub{nullptr};		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
+
+        //Added for VPP:
+        orb_advert_t    _peakseek_status_pub(nullptr);
+        //*******************
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -164,6 +181,13 @@ private:
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct vehicle_land_detected_s		_vehicle_land_detected {};
+
+        /*Added for VPP:*/
+        struct rc_channels_s                    _rc_channels;
+        struct esc_report_s                     _esc_report;
+        struct esc_status_s                     _esc_status;
+        struct peakseek_status_s                _peakseek_status;
+        //*******************
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
