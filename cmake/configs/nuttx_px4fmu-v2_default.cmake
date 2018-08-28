@@ -1,6 +1,6 @@
 px4_nuttx_configure(HWCLASS m4 CONFIG nsh ROMFS y ROMFSROOT px4fmu_common IO px4io-v2)
 
-#set(config_uavcan_num_ifaces 2)
+set(config_uavcan_num_ifaces 2)
 
 set(config_module_list
 	#
@@ -106,7 +106,7 @@ set(config_module_list
 	modules/load_mon
 	modules/mavlink
 	modules/navigator
-	#modules/uavcan
+	modules/uavcan
 
 	#
 	# Estimation modules
