@@ -6,7 +6,7 @@
 #
 
 set VEHICLE_TYPE mc
-param set UAVCAN_ENABLE 3
+set OUTPUT_MODE uavcan_esc
 
 if [ $AUTOCNF == yes ]
 then
@@ -24,8 +24,8 @@ fi
 #
 # This is the gimbal pass mixer.
 #
-set MIXER_AUX pass
-#set MIXER_AUX VPPQ
+#set MIXER_AUX pass
+set MIXER_AUX VPPQ
 
 set PWM_AUX_RATE 50
 set PWM_AUX_OUT 1234
