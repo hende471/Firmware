@@ -23,8 +23,8 @@
 sh /etc/init.d/rc.mc_defaults
 
 #set MIXER quad_+
-set MIXER VPPQ
-#set MIXER_AUX VPPQ
-set OUTPUT_MODE uavcan_esc
+#set MIXER VPPQ
+set MIXER_AUX VPPQ
+#set OUTPUT_MODE uavcan_esc
 
 set PWM_OUT 1234
