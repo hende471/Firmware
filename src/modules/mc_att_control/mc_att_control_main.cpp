@@ -709,33 +709,13 @@ MulticopterAttitudeControl::run()
         float vpp_ki = 0.8f;
         float vpp_kd = 0.08f;
 
-        /*Quantities related to VPP peak-seeking control*/
-        //float KapT3 = 9.2032f*pow(10,-7.0f);
-        //float k_beta = -17.5; //minus sign due to output signal getting inverted
-        //float betaL0 = -2.9671f;
-        //float betaQ0 = -4.1527f;
-        //float Rarmature = 0.1f;
-        //float ke = 10.0f*pow(3,0.5f)/(3.14f*770.0f); //Agrees with SYS-ID code, probably correct
-        //float kt = 30.0f/(3.14f*770.0f);
-
-        //float I0 = 0.5f;
-
-        //float k2 = 2.9626f*pow(10,-9.0f);
-        //float k3 = 4.8218f*pow(10,-8.0f);
-        //float Wtb = 0.412f*9.81f;
-
-        //float wsquare = 0.0f;
-        //float dI_dbeta = 0.0f;
-        //float dT_dbeta = 0.0f;
-        //float T = 0.0f;
-        //float deta_dbeta = 0.0f;
-
+        /*Commonly used VPP quantities*/
         float u_beta = 0.0f;
         float I = 0.0f;
         float k_v = 0.0;
 
-        /*Perturb and Observer quantities:*/
-        float del_t = 10.0f;
+        /*Perturb and Observe quantities:*/
+        float del_t = 1000.0f;
         float t_prev = 0.0f;
         float p_prev = 0.0f;
         float cnt = 0.0f;
@@ -920,23 +900,23 @@ MulticopterAttitudeControl::run()
                                     if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add prop pitch control
                                     {
 
-                                        //*******Smooth Perturb & Observe*******
+                                        //*******Smooth Variable-Step Perturb & Observe*******
                                         // Equations:
                                         if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
                                         {
                                             t_prev = hrt_absolute_time();
 
                                             //Do Perturb Step:
-                                            del_P = pws/cnt - p_prev;
-                                            if (del_P >= 0)
-                                                dir *= -1;
+                                            del_P = pws/cnt - p_prev; //difference between current and previous average power
+                                            if (del_P >= 0) //Assume: we are less efficient than before
+                                                dir *= -1;  //Move in the opposite direction
 
-                                            u_beta_sp = u_beta+dir*delbeta;
+                                            u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta;
 
                                             p_prev = pws/cnt;
 
-                                            pws = 0;
-                                            cnt = 0;
+                                            pws = 0; //Reset Power sum
+                                            cnt = 0; //Reset sum counter
                                         }
                                         else
                                         {
