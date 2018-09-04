@@ -710,35 +710,43 @@ MulticopterAttitudeControl::run()
         float vpp_kd = 0.08f;
 
         /*Quantities related to VPP peak-seeking control*/
-        float KapT3 = 9.2032f*pow(10,-7.0f);
-        float k_beta = -17.5; //minus sign due to output signal getting inverted
-        float k_v = 0.0;
-        float betaL0 = -2.9671f;
-        //float betaL0 = 0.0944f;
-        float betaQ0 = -4.1527f;
-        float Rarmature = 0.1f;
-        //float ke = 20.0*pow(3,0.5)/(3.14*14.0*770.0); //from previous version of peakseek code; not sure if this is correct
-        float ke = 10.0f*pow(3,0.5f)/(3.14f*770.0f); //Agrees with SYS-ID code, probably correct
-        float kt = 30.0f/(3.14f*770.0f);
+        //float KapT3 = 9.2032f*pow(10,-7.0f);
+        //float k_beta = -17.5; //minus sign due to output signal getting inverted
+        //float betaL0 = -2.9671f;
+        //float betaQ0 = -4.1527f;
+        //float Rarmature = 0.1f;
+        //float ke = 10.0f*pow(3,0.5f)/(3.14f*770.0f); //Agrees with SYS-ID code, probably correct
+        //float kt = 30.0f/(3.14f*770.0f);
 
         //float I0 = 0.5f;
 
-        float k2 = 2.9626f*pow(10,-9.0f);
-        float k3 = 4.8218f*pow(10,-8.0f);
-        float Wtb = 0.412f*9.81f;
-        float delbeta = 2.0f*pow(10,-8.0f);
+        //float k2 = 2.9626f*pow(10,-9.0f);
+        //float k3 = 4.8218f*pow(10,-8.0f);
+        //float Wtb = 0.412f*9.81f;
 
-        float wsquare = 0.0f;
-        float dI_dbeta = 0.0f;
-        float dT_dbeta = 0.0f;
-        float T = 0.0f;
-        float deta_dbeta = 0.0f;
+        //float wsquare = 0.0f;
+        //float dI_dbeta = 0.0f;
+        //float dT_dbeta = 0.0f;
+        //float T = 0.0f;
+        //float deta_dbeta = 0.0f;
 
         float u_beta = 0.0f;
-        float u_v = 0.0f;
         float I = 0.0f;
-        //float Power = 0.0f;
-        float diff_const = 1.0f*pow(10,0.0f);
+        float k_v = 0.0;
+
+        /*Perturb and Observer quantities:*/
+        float del_t = 10.0f;
+        float t_prev = 0.0f;
+        float p_prev = 0.0f;
+        float cnt = 0.0f;
+        float delbeta = 8.0f*pow(10,-2.0f);
+        float dir = 1;
+        float Power = 0.0f;
+        float del_P = 0.0f;
+        float pws = 0.0f;
+        float u_beta_sp = 0.0f;
+        float A = 0.99; //First order filter coefficient.
+        float nSamples = 200;
 
         /*End*/
 
@@ -894,8 +902,10 @@ MulticopterAttitudeControl::run()
 
                                 }
 
-                                wsquare = (((float) _esc_status.esc[0].esc_rpm)*6.28f/60.0f)*(((float) _esc_status.esc[0].esc_rpm)*6.28f/60.0f);
-                                //wsquare = ((float) _esc_status.esc[0].esc_rpm);
+                                k_v = _esc_status.esc[0].esc_voltage;
+                                I = _esc_status.esc[0].esc_current;
+                                Power = (k_v*I);
+
 
                                 if (_rc_channels.channels[5] < 0.25f){  //if 3-way switch is not down (not away from pilot), do rpm control
                                     //PID control equations:
@@ -910,24 +920,40 @@ MulticopterAttitudeControl::run()
                                     if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add prop pitch control
                                     {
 
-                                        //Peak-seeking equations:
-                                        u_v = vpp_thrust;
-                                        k_v = _esc_status.esc[0].esc_voltage;
-                                        I = _esc_status.esc[0].esc_current;
-                                       // Power = (k_v*I)/200.0f;
+                                        //*******Smooth Perturb & Observe*******
+                                        // Equations:
+                                        if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
+                                        {
+                                            t_prev = hrt_absolute_time();
 
-                                        T = Wtb*KapT3*(k_beta*u_beta-betaL0)*wsquare;
-                                        dI_dbeta = 2.0f*k2*k_beta*(k_beta*u_beta-betaQ0)*wsquare*((float) pow(ke,2.0f))/(kt*((float) pow(ke,2.0f))-2.0f*Rarmature*(k2*((float) pow((k_beta*u_beta-betaQ0),2.0f))+k3)*(((float) _esc_status.esc[0].esc_rpm)*6.28f/(60.0f*ke)));
-                                        dT_dbeta = Wtb*KapT3/((float) pow(ke,2))*(wsquare-2*Rarmature*(k_beta*u_beta-betaL0)*dI_dbeta);
-                                        deta_dbeta = (diff_const*I*dT_dbeta - T*dI_dbeta)/(k_v*u_v*((float) pow(I,2)));
+                                            //Do Perturb Step:
+                                            del_P = pws/cnt - p_prev;
+                                            if (del_P >= 0)
+                                                dir *= -1;
+
+                                            u_beta_sp = u_beta+dir*delbeta;
+
+                                            p_prev = pws/cnt;
+
+                                            pws = 0;
+                                            cnt = 0;
+                                        }
+                                        else
+                                        {
+                                            pws += Power;
+                                            cnt ++;
+                                        }
+                                        //****************************************
+
+                                        //Apply first-order filter to smooth out pitch change:
+                                        u_beta = A*u_beta + (1-A)*u_beta_sp;
                                         /*Saturation limits on the propeller pitch angle*/
-                                        if ( fabsf(u_beta-deta_dbeta*delbeta)<1 ) {
-                                            u_beta = u_beta-deta_dbeta*delbeta;
-                                        } else if ((u_beta-deta_dbeta*delbeta)<=-1) {
+                                        if (u_beta<=-1) {
                                             u_beta = -1;
-                                        } else if ((u_beta-deta_dbeta*delbeta)>=1) {
+                                        } else if (u_beta>=1) {
                                             u_beta = 1;
                                         }
+
                                     } else {
                                         u_beta = -_rc_channels.channels[6];
                                     }
@@ -941,16 +967,16 @@ MulticopterAttitudeControl::run()
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
-                                _actuators.control[4] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
+                                _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
                                 _actuators.control[5] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
 
                                 /* publish peakseek info */
-                                _peakseek_status.thrust_est = T;
-                                _peakseek_status.di_dbeta = dI_dbeta;
-                                _peakseek_status.dt_dbeta = dT_dbeta;
-                                _peakseek_status.deta_dbeta = deta_dbeta;
-                                _peakseek_status.delbeta = delbeta;
-                                _peakseek_status.timestamp = hrt_absolute_time();
+                                //_peakseek_status.thrust_est = T;
+                                //_peakseek_status.di_dbeta = dI_dbeta;
+                                //_peakseek_status.dt_dbeta = dT_dbeta;
+                                //_peakseek_status.deta_dbeta = deta_dbeta;
+                                //_peakseek_status.delbeta = delbeta;
+                                //_peakseek_status.timestamp = hrt_absolute_time();
 
                                 if (_peakseek_status_pub != nullptr) {
                                         orb_publish(ORB_ID(peakseek_status), _peakseek_status_pub, &_peakseek_status);
