@@ -719,14 +719,71 @@ MulticopterAttitudeControl::run()
         float t_prev = 0.0f;
         float p_prev = 0.0f;
         float cnt = 0.0f;
+        float cnt_kf = 0.0f;
         float delbeta = 8.0f*pow(10,-2.0f);
         float dir = 1;
         float Power = 0.0f;
         float del_P = 0.0f;
         float pws = 0.0f;
+        float pws_kf = 0.0f;
         float u_beta_sp = 0.0f;
         float A = 0.99; //First order filter coefficient.
         float nSamples = 200;
+
+        /*Kalman Filter for optimum pitch*/
+        const int dim_state = 4;
+
+        Vector<float,dim_state> state;
+        state.setOne();
+        state(0) = _esc_status.esc[0].esc_voltage*_esc_status.esc[0].esc_current;
+        state(1) = 0.5f;
+
+        Matrix<float,dim_state,dim_state> A_proc;
+        A_proc.setIdentity();
+        A_proc(0,0) = 0.0f;
+        A_proc(0,1) = 1.0f;
+        A_proc(0,2) = 1.0f;
+        A_proc(0,3) = 1.0f;
+
+        Matrix<float,dim_state,dim_state> cov_proc;
+        cov_proc.setIdentity();
+        cov_proc*=1.0f; //Set to large initial numbers
+
+        Matrix<float,dim_state,dim_state> cov_Q;
+        cov_Q.setIdentity();
+
+        //Matrix<float,1,1> cov_R;
+        //cov_R(0,0) = 2.0f;
+        float cov_R = 40.0f;
+
+        Vector<float,dim_state> H_meas;
+        H_meas.setZero();
+        H_meas(0) = 1.0f;
+        //H_meas = H_meas.transpose(); //To make it a row vector
+
+        //Matrix<float,1,1> cov_S;
+        //cov_S(0,0) = 10.0f*cov_R(0,0);
+        float cov_S = 10.0f*cov_R;
+
+        //Matrix<float,1,1> inv_S;
+        //inv_S(0,0) = 0.0f;
+        //float inv_S = 0.0f;
+
+        //Matrix<float,1,1> innov;
+        //innov(0,0) = 0.0f;
+        float innov = 0.0f;
+
+        Matrix<float,dim_state,1> gain_K;
+
+        Matrix<float,dim_state,dim_state> myId;
+        myId.setIdentity();
+
+        Matrix<float,1,1> scalar_temp;
+        scalar_temp(0,0) = 0.0f;
+
+        float u_beta_kf = 0.0f;
+
+
 
         /*End*/
 
@@ -897,6 +954,41 @@ MulticopterAttitudeControl::run()
                                     arm_error_prev = arm_error;
                                     vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
 
+                                    if (cnt_kf >= 20)
+                                    {
+                                        //******Kalman Filter for optimum pitch:******
+                                        // Time Update
+                                        //  Update Process matrix with most recent beta commands:
+                                        A_proc(0,1) = pow(u_beta,2);
+                                        A_proc(0,2) = u_beta;
+                                        state = A_proc*state;
+                                        cov_proc = A_proc*cov_proc*A_proc.transpose()+cov_Q;
+
+                                        // Measurement Update
+                                        //  Note: the transposes are flipped because H is supposed to be a row vector, but Vector creates column vectors.
+                                        scalar_temp = H_meas.transpose()*state;
+                                        innov = pws_kf/cnt_kf - scalar_temp(0,0);
+                                        scalar_temp = H_meas.transpose()*cov_proc*H_meas;
+                                        cov_S = cov_R+scalar_temp(0,0);
+                                        gain_K = cov_proc*H_meas/cov_S;
+                                        state = state+gain_K*innov;
+                                        cov_proc = (myId - gain_K*H_meas.transpose())*cov_proc*(myId - gain_K*H_meas.transpose()).transpose()+gain_K*cov_R*gain_K.transpose();
+                                        //*********************************************
+
+                                        u_beta_kf = -0.5f*state(2)/state(1);
+
+                                        //Reset averaging quantities:
+                                        cnt_kf = 0;
+                                        pws_kf = 0;
+                                    }
+                                    else
+                                    {
+                                        //Average the power measurements:
+                                        cnt_kf ++;
+                                        pws_kf += Power;
+                                    }
+
+
                                     if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add prop pitch control
                                     {
 
@@ -911,7 +1003,14 @@ MulticopterAttitudeControl::run()
                                             if (del_P >= 0) //Assume: we are less efficient than before
                                                 dir *= -1;  //Move in the opposite direction
 
-                                            u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta;
+                                            if (fabs(del_P)>10.0f) //limit setpoint change
+                                            {
+                                                u_beta_sp = u_beta+dir*delbeta;
+                                            }
+                                            else
+                                            {
+                                                u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta;
+                                            }
 
                                             p_prev = pws/cnt;
 
@@ -947,8 +1046,9 @@ MulticopterAttitudeControl::run()
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
-                                _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
-                                _actuators.control[5] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
+                                _actuators.control[4] = (PX4_ISFINITE(0.01f*Power)) ? 0.01f*Power : 0.0f;
+                                _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
+                                _actuators.control[6] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
 
                                 /* publish peakseek info */
                                 //_peakseek_status.thrust_est = T;
@@ -966,7 +1066,8 @@ MulticopterAttitudeControl::run()
                                 }
                                 /*********End VPP addition**********/
 
-				_actuators.control[7] = _v_att_sp.landing_gear;
+                                //_actuators.control[7] = _v_att_sp.landing_gear;
+                                _actuators.control[7] = (PX4_ISFINITE(u_beta_kf)) ? u_beta_kf : 0.0f;
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _sensor_gyro.timestamp;
 
