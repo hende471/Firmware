@@ -709,44 +709,51 @@ MulticopterAttitudeControl::run()
         float vpp_ki = 0.8f;
         float vpp_kd = 0.08f;
 
-        /*Quantities related to VPP peak-seeking control*/
-        //float KapT3 = 9.2032f*pow(10,-7.0f);
-        //float k_beta = -17.5; //minus sign due to output signal getting inverted
-        //float betaL0 = -2.9671f;
-        //float betaQ0 = -4.1527f;
-        //float Rarmature = 0.1f;
-        //float ke = 10.0f*pow(3,0.5f)/(3.14f*770.0f); //Agrees with SYS-ID code, probably correct
-        //float kt = 30.0f/(3.14f*770.0f);
-
-        //float I0 = 0.5f;
-
-        //float k2 = 2.9626f*pow(10,-9.0f);
-        //float k3 = 4.8218f*pow(10,-8.0f);
-        //float Wtb = 0.412f*9.81f;
-
-        //float wsquare = 0.0f;
-        //float dI_dbeta = 0.0f;
-        //float dT_dbeta = 0.0f;
-        //float T = 0.0f;
-        //float deta_dbeta = 0.0f;
-
+        /*Common Power Quantities*/
         float u_beta = 0.0f;
         float I = 0.0f;
-        float k_v = 0.0;
+        float k_v = 0.0f;
 
-        /*Perturb and Observer quantities:*/
+        /*Perturb and Observe Quantities*/
         float del_t = 10.0f;
         float t_prev = 0.0f;
         float p_prev = 0.0f;
         float cnt = 0.0f;
         float delbeta = 8.0f*pow(10,-2.0f);
         float dir = 1;
-        float Power = 0.0f;
+        float Power = _esc_status.esc[0].esc_voltage*_esc_status.esc[0].esc_current;
         float del_P = 0.0f;
         float pws = 0.0f;
-        float u_beta_sp = 0.0f;
+        float u_beta_sp = _rc_channels.channels[6];
         float A = 0.99; //First order filter coefficient.
         float nSamples = 200;
+
+        /*Super P&O Quantities*/
+        const int len_avg = 4;
+        const int nParams = 2;
+        Vector<float,len_avg> pSam;
+        pSam.setOne();
+        pSam*=Power;
+        Matrix<float,len_avg,len_avg> A_S;
+        for (int i=0;i<(len_avg-1);i++)
+        {
+            A_S(i+1,i) = 1;
+        }
+        SquareMatrix<float,nParams> invXreg;
+        invXreg.setZero();
+        Vector<float,len_avg> bSam;
+        bSam.setOne();
+        bSam*=_rc_channels.channels[6];
+        Matrix<float,len_avg,nParams> Xreg;
+        Xreg.setOne();
+        Xreg.setCol(0,bSam);
+        SquareMatrix<float,nParams> testMat;
+        testMat.setZero();
+        //testMat(0,0) = 4;
+        //testMat(1,1) = -3;
+        float m_crit = 20.0f;
+        Vector<float,nParams> temp;
+        temp.setZero();
 
         /*End*/
 
@@ -920,26 +927,41 @@ MulticopterAttitudeControl::run()
                                     if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add prop pitch control
                                     {
 
-                                        //*******Smooth Perturb & Observe*******
+
                                         // Equations:
                                         if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
                                         {
                                             t_prev = hrt_absolute_time();
 
-                                            //Do Perturb Step:
-                                            del_P = pws/cnt - p_prev;
-                                            if (del_P >= 0)
-                                                dir *= -1;
+                                            //*********Line Regression*********
+                                            // Update parameters:
+                                            pSam = A_S*pSam;
+                                            pSam(0) = pws/cnt;
+                                            bSam = A_S*bSam;
+                                            bSam(0) = u_beta;
+                                            // Update Xreg:
+                                            Xreg.setCol(0,bSam);
+                                            // Left Pseudo Inverse:
+                                            testMat = Xreg.transpose()*Xreg;
+                                            inv(testMat,invXreg);
+                                            temp = invXreg*Xreg.transpose()*pSam;
 
-                                            u_beta_sp = u_beta+dir*delbeta;
-
+                                            if (fabs(temp(0))>m_crit)
+                                            {
+                                                //Do super P&O:
+                                                u_beta_sp = u_beta-temp(0)/fabs(temp(0))*delbeta;
+                                            } else {
+                                                //Do Regular P&O:
+                                                //Perturb Step:
+                                                del_P = pws/cnt - p_prev;
+                                                if (del_P >= 0)
+                                                    dir *= -1;
+                                                u_beta_sp = u_beta+dir*delbeta;
+                                            }
                                             p_prev = pws/cnt;
-
                                             pws = 0;
                                             cnt = 0;
-                                        }
-                                        else
-                                        {
+                                        } else {
                                             pws += Power;
                                             cnt ++;
                                         }
@@ -969,6 +991,8 @@ MulticopterAttitudeControl::run()
 
                                 _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
                                 _actuators.control[5] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
+                                _actuators.control[6] = (PX4_ISFINITE(0.01f*temp(0))) ? 0.01f*temp(0) : 0.0f;
+                                //_actuators.control[6] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
 
                                 /* publish peakseek info */
                                 //_peakseek_status.thrust_est = T;
