@@ -949,7 +949,7 @@ MulticopterAttitudeControl::run()
                                             if (fabs(temp(0))>m_crit)
                                             {
                                                 //Do super P&O:
-                                                u_beta_sp = u_beta-temp(0)/fabs(temp(0))*delbeta;
+                                                u_beta_sp = u_beta-(temp(0)/100.0f)*delbeta;
                                             } else {
                                                 //Do Regular P&O:
                                                 //Perturb Step:
@@ -977,22 +977,21 @@ MulticopterAttitudeControl::run()
                                         }
 
                                     } else {
-                                        u_beta = -_rc_channels.channels[6];
+                                        u_beta = _rc_channels.channels[6];
                                     }
                                 } else {    //If we are in the third (middle) option (Rattitude, perhaps), write out manual commands as well
                                     //vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                                     vpp_thrust = _manual_control_sp.z;
                                     /*Also, reset arm integral error to zero*/
                                     arm_error_int = 0;
-                                    u_beta = -_rc_channels.channels[6];
+                                    u_beta = _rc_channels.channels[6];
                                 }
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
                                 //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
 
                                 _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
-                                _actuators.control[5] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
+                                _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
                                 _actuators.control[6] = (PX4_ISFINITE(0.01f*temp(0))) ? 0.01f*temp(0) : 0.0f;
-                                //_actuators.control[6] = (PX4_ISFINITE(-u_beta)) ? -u_beta : 0.0f;
 
                                 /* publish peakseek info */
                                 //_peakseek_status.thrust_est = T;
