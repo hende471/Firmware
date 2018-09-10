@@ -121,11 +121,11 @@ set(config_module_list
 	#
 	# Vehicle Control
 	#
-	#modules/fw_att_control #Taken out by TNH, 8/29/18
+	modules/fw_att_control #Taken out by TNH, 8/29/18
 	#modules/fw_pos_control_l1 #Taken out by TNH, 8/29/18
 	#modules/gnd_att_control
 	#modules/gnd_pos_control
-	modules/mc_att_control
+	#modules/mc_att_control
 	#modules/mc_pos_control #Taken out by TNH, 8/29/18
 	modules/vtol_att_control
 

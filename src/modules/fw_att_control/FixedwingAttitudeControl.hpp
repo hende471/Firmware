@@ -60,6 +60,12 @@
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+//Added for VPP:
+#include <uORB/topics/rc_channels.h>
+#include <uORB/topics/esc_report.h>
+#include <uORB/topics/esc_status.h>
+#include <uORB/topics/peakseek_status.h>
+//*******************
 #include <vtol_att_control/vtol_type.h>
 
 using matrix::Eulerf;
@@ -103,11 +109,22 @@ private:
 	int		_vehicle_land_detected_sub{-1};		/**< vehicle land detected subscription */
 	int		_vehicle_status_sub{-1};		/**< vehicle status subscription */
 
+        //Added for VPP:
+        int     _rc_channels_sub;
+        int     _esc_report_sub;
+        int     _esc_status_sub;
+        int     _peakseek_status_sub;
+        //*******************
+
 	orb_advert_t	_rate_sp_pub{nullptr};			/**< rate setpoint publication */
 	orb_advert_t	_attitude_sp_pub{nullptr};		/**< attitude setpoint point */
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< actuator control group 0 setpoint */
 	orb_advert_t	_actuators_2_pub{nullptr};		/**< actuator control group 1 setpoint (Airframe) */
 	orb_advert_t	_rate_ctrl_status_pub{nullptr};		/**< rate controller status publication */
+
+        //Added for VPP:
+        orb_advert_t    _peakseek_status_pub{nullptr};
+        //*******************
 
 	orb_id_t _rates_sp_id{nullptr};	// pointer to correct rates setpoint uORB metadata structure
 	orb_id_t _actuators_id{nullptr};	// pointer to correct actuator controls0 uORB metadata structure
@@ -122,6 +139,13 @@ private:
 	vehicle_global_position_s		_global_pos {};		/**< global position */
 	vehicle_rates_setpoint_s		_rates_sp {};		/* attitude rates setpoint */
 	vehicle_status_s			_vehicle_status {};	/**< vehicle status */
+
+        /*Added for VPP:*/
+        struct rc_channels_s                    _rc_channels;
+        struct esc_report_s                     _esc_report;
+        struct esc_status_s                     _esc_status;
+        struct peakseek_status_s                _peakseek_status;
+        //*******************
 
 	Subscription<airspeed_s>			_airspeed_sub;
 
@@ -295,5 +319,12 @@ private:
 	void		global_pos_poll();
 	void		vehicle_status_poll();
 	void		vehicle_land_detected_poll();
+
+        /*Added for VPP:*/
+        void            rc_channels_poll();
+        void            esc_report_poll();
+        void            esc_status_poll();
+        void            peakseek_status_poll();
+        /****************/
 
 };

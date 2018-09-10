@@ -1,4 +1,4 @@
-VPP Multirotor mixer for PX4FMU
+VPP Fixed-wing UAVCAN mixer for PX4FMU
 Name: VPPQ
 Based off of quad_+
 ===========================
@@ -6,18 +6,15 @@ Based off of quad_+
 This file defines a single mixer for a quadrotor in the + configuration. All controls
 are mixed 100%.
 
+Main Motor connected via Zubax Robotics ESC
 M: 1
 O:      20000  20000      0 -10000  10000
 S: 0 3  10000  10000      -5000 -10000  10000
 
 
-M: 1
-O:      10000  10000      0 -10000  10000
-S: 0 4  10000  10000      0 -10000  10000
+Z:
 
-M: 1
-O:      10000  10000      0 -10000  10000
-S: 0 5  10000  10000      0 -10000  10000
+Z:
 
 Z:
 

@@ -403,6 +403,7 @@ MulticopterAttitudeControl::peakseek_status_poll()
     }
 }
 /********************************/
+
 void
 MulticopterAttitudeControl::sensor_bias_poll()
 {
@@ -705,9 +706,9 @@ MulticopterAttitudeControl::run()
         float arm_error_prev = 0.0f;
         float arm_error_der = 0.0f;
         float arm_error = 0.0f;
-        float vpp_kp = 0.4f;
-        float vpp_ki = 0.8f;
-        float vpp_kd = 0.08f;
+        float vpp_kp = 0.0f;
+        float vpp_ki = 0.0f;
+        float vpp_kd = 0.0f;
 
         /*Common Power Quantities*/
         float u_beta = 0.0f;
@@ -717,19 +718,21 @@ MulticopterAttitudeControl::run()
         /*Perturb and Observe Quantities*/
         float del_t = 10.0f;
         float t_prev = 0.0f;
-        float p_prev = 0.0f;
         float cnt = 0.0f;
         float delbeta = 8.0f*pow(10,-2.0f);
         float dir = 1;
         float Power = _esc_status.esc[0].esc_voltage*_esc_status.esc[0].esc_current;
+        float p_prev = Power;
         float del_P = 0.0f;
         float pws = 0.0f;
         float u_beta_sp = _rc_channels.channels[6];
         float A = 0.99; //First order filter coefficient.
         float nSamples = 200;
+        float wNow = _esc_status.esc[0].esc_rpm;
+        float wPrev = wNow;
 
         /*Super P&O Quantities*/
-        const int len_avg = 4;
+        const int len_avg = 8;
         const int nParams = 2;
         Vector<float,len_avg> pSam;
         pSam.setOne();
@@ -751,7 +754,7 @@ MulticopterAttitudeControl::run()
         testMat.setZero();
         //testMat(0,0) = 4;
         //testMat(1,1) = -3;
-        float m_crit = 20.0f;
+        float m_crit = 7.5f;
         Vector<float,nParams> temp;
         temp.setZero();
 
@@ -889,8 +892,10 @@ MulticopterAttitudeControl::run()
 
 				/* publish actuator controls */
 				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
-				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
-				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
+                                //_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
+                                //_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
+                                _actuators.control[1] = (PX4_ISFINITE(_rc_channels.channels[1])) ? _rc_channels.channels[1] : 0.0f;
+                                _actuators.control[2] = (PX4_ISFINITE(_rc_channels.channels[2])) ? _rc_channels.channels[2] : 0.0f;
 
                                 /*Added lines for p-control of VPP testbed system model:*/
                                 //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
@@ -922,7 +927,7 @@ MulticopterAttitudeControl::run()
                                     arm_error_int = arm_error_int+arm_error*dt;
                                     arm_error_der = (arm_error-arm_error_prev)/dt;
                                     arm_error_prev = arm_error;
-                                    vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
+                                    vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der+_manual_control_sp.z;
 
                                     if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add prop pitch control
                                     {
@@ -931,6 +936,7 @@ MulticopterAttitudeControl::run()
                                         // Equations:
                                         if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
                                         {
+                                            wNow = _esc_status.esc[0].esc_rpm;
                                             t_prev = hrt_absolute_time();
 
                                             //*********Line Regression*********
@@ -949,15 +955,16 @@ MulticopterAttitudeControl::run()
                                             if (fabs(temp(0))>m_crit)
                                             {
                                                 //Do super P&O:
-                                                u_beta_sp = u_beta-(temp(0)/100.0f)*delbeta;
+                                                u_beta_sp = u_beta-(temp(0)/100.0f)*delbeta; //Variable-step
                                             } else {
                                                 //Do Regular P&O:
                                                 //Perturb Step:
                                                 del_P = pws/cnt - p_prev;
                                                 if (del_P >= 0)
                                                     dir *= -1;
-                                                u_beta_sp = u_beta+dir*delbeta;
+                                                u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta/(1+fabs(wNow-wPrev)/100.0f); //Variable-step w/ motorspeed change detection.
                                             }
+                                            wPrev = wNow;
                                             p_prev = pws/cnt;
                                             pws = 0;
                                             cnt = 0;
@@ -967,8 +974,17 @@ MulticopterAttitudeControl::run()
                                         }
                                         //****************************************
 
-                                        //Apply first-order filter to smooth out pitch change:
-                                        u_beta = A*u_beta + (1-A)*u_beta_sp;
+                                        //Apply first-order filter with saturation limits to smooth out pitch change:
+                                        if (u_beta_sp-u_beta>delbeta)
+                                        {
+                                            u_beta = A*u_beta + (1-A)*(u_beta+delbeta);
+                                        } else if (u_beta-u_beta_sp>delbeta)
+                                        {
+                                            u_beta = A*u_beta + (1-A)*(u_beta-delbeta);
+                                        } else
+                                        {
+                                            u_beta = A*u_beta + (1-A)*u_beta_sp;
+                                        }
                                         /*Saturation limits on the propeller pitch angle*/
                                         if (u_beta<=-1) {
                                             u_beta = -1;
@@ -987,7 +1003,7 @@ MulticopterAttitudeControl::run()
                                     u_beta = _rc_channels.channels[6];
                                 }
                                 _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
-                                //_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
+                                //_actuators.control[3] = (PX4_ISFINITE(_manual_control_sp.z)) ? _manual_control_sp.z : 0.0f;
 
                                 _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
                                 _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;

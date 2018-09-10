@@ -33,6 +33,8 @@
 
 #include "FixedwingAttitudeControl.hpp"
 
+using namespace matrix;
+
 /**
  * Fixedwing attitude control app start / stop handling function
  *
@@ -404,6 +406,60 @@ FixedwingAttitudeControl::vehicle_land_detected_poll()
 	}
 }
 
+/*Added these functions for VPP:*/
+void
+FixedwingAttitudeControl::rc_channels_poll()
+{
+    bool updated;
+
+    /* Check if rc channels have changed */
+    orb_check(_rc_channels_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
+    }
+}
+
+void
+FixedwingAttitudeControl::esc_report_poll()
+{
+    bool updated;
+
+    /* Check if esc values have changed */
+    orb_check(_esc_report_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(esc_report), _esc_report_sub, &_esc_report);
+    }
+}
+
+void
+FixedwingAttitudeControl::esc_status_poll()
+{
+    bool updated;
+
+    /* Check if esc status has changed */
+    orb_check(_esc_status_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(esc_status), _esc_status_sub, &_esc_status);
+    }
+}
+
+void
+FixedwingAttitudeControl::peakseek_status_poll()
+{
+    bool updated;
+
+    /* Check if peak-seeking params have changed */
+    orb_check(_peakseek_status_sub, &updated);
+
+    if (updated) {
+            orb_copy(ORB_ID(peakseek_status), _peakseek_status_sub, &_peakseek_status);
+    }
+}
+/********************************/
+
 void FixedwingAttitudeControl::run()
 {
 	/*
@@ -419,6 +475,13 @@ void FixedwingAttitudeControl::run()
 	_vehicle_land_detected_sub = orb_subscribe(ORB_ID(vehicle_land_detected));
 	_battery_status_sub = orb_subscribe(ORB_ID(battery_status));
 
+        /*Added for VPP:*/
+        _rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
+        _esc_report_sub = orb_subscribe(ORB_ID(esc_report));
+        _esc_status_sub = orb_subscribe(ORB_ID(esc_status));
+        _peakseek_status_sub = orb_subscribe(ORB_ID(peakseek_status));
+        //*******************
+
 	parameters_update();
 
 	/* get an initial update for all sensor and status data */
@@ -428,12 +491,84 @@ void FixedwingAttitudeControl::run()
 	vehicle_status_poll();
 	vehicle_land_detected_poll();
 
+        /*Added for VPP:*/
+        rc_channels_poll();
+        esc_report_poll();
+        esc_status_poll();
+        peakseek_status_poll();
+        //*******************
+
 	/* wakeup source */
 	px4_pollfd_struct_t fds[1];
 
 	/* Setup of loop */
 	fds[0].fd = _att_sub;
 	fds[0].events = POLLIN;
+
+        /*Added for VPP Testbed PID loop:*/
+        float vpp_thrust = 0.0f;    //initial value of thrust
+        float vpp_setpoint = 0.0f;
+        float arm_error_int = 0.0f;
+        //float aircraft_pitch = 0.0f;
+        float arm_error_prev = 0.0f;
+        float arm_error_der = 0.0f;
+        float arm_error = 0.0f;
+        float vpp_kp = 0.02f; //Educated guess for now
+        float vpp_ki = 0.002f; //Educated guess for now
+        float vpp_kd = 0.0001f; //Educated guess for now
+
+        /*Common Power Quantities*/
+        float u_beta = 0.0f;
+        float I = 0.0f;
+        float k_v = 0.0f;
+
+        /*Perturb and Observe Quantities*/
+        float del_t = 10.0f;
+        float t_prev = 0.0f;
+        float cnt = 0.0f;
+        float delbeta = 8.0f/100.0f;
+        float dir = 1;
+        float Power = _esc_status.esc[0].esc_voltage*_esc_status.esc[0].esc_current;
+        float p_prev = Power;
+        float del_P = 0.0f;
+        float pws = 0.0f;
+        float u_beta_sp = _rc_channels.channels[6];
+        float A = 0.99; //First order filter coefficient.
+        float nSamples = 200;
+        float wNow = _esc_status.esc[0].esc_rpm;
+        float wPrev = wNow;
+
+        /*Super P&O Quantities*/
+        const int len_avg = 8;
+        const int nParams = 2;
+        Vector<float,len_avg> pSam;
+        pSam.setOne();
+        pSam*=Power;
+        Matrix<float,len_avg,len_avg> A_S;
+        for (int i=0;i<(len_avg-1);i++)
+        {
+            A_S(i+1,i) = 1;
+        }
+        SquareMatrix<float,nParams> invXreg;
+        invXreg.setZero();
+        Vector<float,len_avg> bSam;
+        bSam.setOne();
+        bSam*=_rc_channels.channels[6];
+        Matrix<float,len_avg,nParams> Xreg;
+        Xreg.setOne();
+        Xreg.setCol(0,bSam);
+        SquareMatrix<float,nParams> testMat;
+        testMat.setZero();
+        //testMat(0,0) = 4;
+        //testMat(1,1) = -3;
+        float m_crit = 7.5f;
+        Vector<float,nParams> temp;
+        temp.setZero();
+
+        /*For fixed wing implementation:*/
+        float myairspeed = math::max(0.5f,_airspeed_sub.get().indicated_airspeed_m_s);
+
+        /*End*/
 
 	while (!should_exit()) {
 
@@ -535,6 +670,13 @@ void FixedwingAttitudeControl::run()
 			global_pos_poll();
 			vehicle_status_poll();
 			vehicle_land_detected_poll();
+
+                        /*Added for VPP:*/
+                        rc_channels_poll();
+                        esc_report_poll();
+                        esc_status_poll();
+                        peakseek_status_poll();
+                        //*******************
 
 			// the position controller will not emit attitude setpoints in some modes
 			// we need to make sure that this flag is reset
@@ -832,6 +974,140 @@ void FixedwingAttitudeControl::run()
 			_actuators.control[actuator_controls_s::INDEX_AIRBRAKES] = _flaperons_applied;
 			// FIXME: this should use _vcontrol_mode.landing_gear_pos in the future
 			_actuators.control[7] = _manual.aux3;
+
+                        /*********************************************************************/
+                        /*Control Algorithm Added For VPP:*/
+                        _actuators.control[1] = (PX4_ISFINITE(_rc_channels.channels[1])) ? _rc_channels.channels[1] : 0.0f;
+                        //_actuators.control[2] = (PX4_ISFINITE(_rc_channels.channels[2])) ? _rc_channels.channels[2] : 0.0f;
+                        _actuators.control[2] = (PX4_ISFINITE(_manual.r)) ? _manual.r : 0.0f;
+
+                        /*Added lines for p-control of VPP testbed system model:*/
+                        //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
+
+                        //if (_rc_channels.channels[4] > 0.0f){    //switch is down --> continuous setpoint
+                            vpp_setpoint = 10.0f*_rc_channels.channels[2]+10.0f; //range from 10 to 20 m/s
+                        //} else {    //setpoint switch is up --> discrete setpoints (two of them)
+                            //if (_rc_channels.channels[1] < -0.2f) {
+                            //    vpp_setpoint = 0.3f;
+                            //} else if (_rc_channels.channels[1] > 0.2f) {
+                            //    vpp_setpoint = -0.5f;
+                            //} else {
+                            //    vpp_setpoint = 0.0f;
+                            //}
+
+
+                        //}
+
+                        k_v = _esc_status.esc[0].esc_voltage;
+                        I = _esc_status.esc[0].esc_current;
+                        Power = (k_v*I);
+                        vpp_thrust = _manual.z; //Assume that thrust is manual unless changed
+
+                        if (_rc_channels.channels[5] < 0.25f){  //if 3-way switch is not down (not away from pilot), do prop pitch control
+                            // Equations:
+                            if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
+                            {
+                                wNow = _esc_status.esc[0].esc_rpm;
+                                t_prev = hrt_absolute_time();
+
+                                //*********Line Regression*********
+                                // Update parameters:
+                                pSam = A_S*pSam;
+                                pSam(0) = pws/cnt;
+                                bSam = A_S*bSam;
+                                bSam(0) = u_beta;
+                                // Update Xreg:
+                                Xreg.setCol(0,bSam);
+                                // Left Pseudo Inverse:
+                                testMat = Xreg.transpose()*Xreg;
+                                inv(testMat,invXreg);
+                                temp = invXreg*Xreg.transpose()*pSam;
+
+                                if (fabs(temp(0))>m_crit)
+                                {
+                                    //Do super P&O:
+                                    u_beta_sp = u_beta-(temp(0)/100.0f)*delbeta; //Variable-step
+                                } else {
+                                    //Do Regular P&O:
+                                    //Perturb Step:
+                                    del_P = pws/cnt - p_prev;
+                                    if (del_P >= 0)
+                                        dir *= -1;
+                                    u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta/(1+fabs(wNow-wPrev)/100.0f); //Variable-step w/ motorspeed change detection.
+                                }
+                                wPrev = wNow;
+                                p_prev = pws/cnt;
+                                pws = 0;
+                                cnt = 0;
+                            } else {
+                                pws += Power;
+                                cnt ++;
+                            }
+                            //****************************************
+
+                            //Apply first-order filter with saturation limits to smooth out pitch change:
+                            if (u_beta_sp-u_beta>delbeta)
+                            {
+                                u_beta = A*u_beta + (1-A)*(u_beta+delbeta);
+                            } else if (u_beta-u_beta_sp>delbeta)
+                            {
+                                u_beta = A*u_beta + (1-A)*(u_beta-delbeta);
+                            } else
+                            {
+                                u_beta = A*u_beta + (1-A)*u_beta_sp;
+                            }
+                            /*Saturation limits on the propeller pitch angle*/
+                            if (u_beta<=-1) {
+                                u_beta = -1;
+                            } else if (u_beta>=1) {
+                                u_beta = 1;
+                            }
+
+                            if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add airspeed control
+                            {
+                                //PID control equations based on error in airspeed:
+
+                                //aircraft_pitch = cos(asin(2.0f*(_v_att.q[0]*_v_att.q[2]-_v_att.q[3]*_v_att.q[1]))-3.14f*0.5f);
+                                //arm_error = vpp_setpoint - aircraft_pitch;
+
+                                myairspeed = math::max(0.5f, _airspeed_sub.get().indicated_airspeed_m_s);
+                                arm_error = (vpp_setpoint - myairspeed)/10.0f; //Normalized
+
+                                arm_error_int = arm_error_int+arm_error*deltaT;
+                                arm_error_der = (arm_error-arm_error_prev)/deltaT;
+                                arm_error_prev = arm_error;
+                                vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
+                            }
+                        } else {    //Full manual mode, write out manual commands
+                            //vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
+                            vpp_thrust = _manual.z;
+                            /*Also, reset arm integral error to zero*/
+                            arm_error_int = 0;
+                            u_beta = _rc_channels.channels[6];
+                        }
+                        _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
+                        //_actuators.control[3] = (PX4_ISFINITE(_manual_control_sp.z)) ? _manual_control_sp.z : 0.0f;
+
+                        _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
+                        _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
+                        _actuators.control[6] = (PX4_ISFINITE(0.01f*temp(0))) ? 0.01f*temp(0) : 0.0f;
+
+                        /* publish peakseek info */
+                        //_peakseek_status.thrust_est = T;
+                        //_peakseek_status.di_dbeta = dI_dbeta;
+                        //_peakseek_status.dt_dbeta = dT_dbeta;
+                        //_peakseek_status.deta_dbeta = deta_dbeta;
+                        //_peakseek_status.delbeta = delbeta;
+                        //_peakseek_status.timestamp = hrt_absolute_time();
+
+                        if (_peakseek_status_pub != nullptr) {
+                                orb_publish(ORB_ID(peakseek_status), _peakseek_status_pub, &_peakseek_status);
+
+                        } else {
+                                _peakseek_status_pub = orb_advertise(ORB_ID(peakseek_status), &_peakseek_status);
+                        }
+                        /*********End VPP addition**********/
+                        /*********************************************************************/
 
 			/* lazily publish the setpoint only once available */
 			_actuators.timestamp = hrt_absolute_time();
