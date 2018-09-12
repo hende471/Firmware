@@ -513,9 +513,10 @@ void FixedwingAttitudeControl::run()
         float arm_error_prev = 0.0f;
         float arm_error_der = 0.0f;
         float arm_error = 0.0f;
-        float vpp_kp = 0.02f; //Educated guess for now
-        float vpp_ki = 0.002f; //Educated guess for now
-        float vpp_kd = 0.0001f; //Educated guess for now
+        float vpp_kp = 0.4f; //Educated guess for now
+        float vpp_ki = 0.12f; //Educated guess for now
+        float vpp_kd = 0.001f; //Educated guess for now
+        bool was_controlling_throttle = false;
 
         /*Common Power Quantities*/
         float u_beta = 0.0f;
@@ -537,6 +538,7 @@ void FixedwingAttitudeControl::run()
         float nSamples = 200;
         float wNow = _esc_status.esc[0].esc_rpm;
         float wPrev = wNow;
+        bool was_controlling_pitch = false;
 
         /*Super P&O Quantities*/
         const int len_avg = 8;
@@ -564,6 +566,9 @@ void FixedwingAttitudeControl::run()
         float m_crit = 7.5f;
         Vector<float,nParams> temp;
         temp.setZero();
+        float beta_spread = 0.1;
+        float bMax = 0.0f;
+        float bMin = 0.0f;
 
         /*For fixed wing implementation:*/
         float myairspeed = math::max(0.5f,_airspeed_sub.get().indicated_airspeed_m_s);
@@ -979,13 +984,14 @@ void FixedwingAttitudeControl::run()
                         /*Control Algorithm Added For VPP:*/
                         _actuators.control[1] = (PX4_ISFINITE(_rc_channels.channels[1])) ? _rc_channels.channels[1] : 0.0f;
                         //_actuators.control[2] = (PX4_ISFINITE(_rc_channels.channels[2])) ? _rc_channels.channels[2] : 0.0f;
-                        _actuators.control[2] = (PX4_ISFINITE(_manual.r)) ? _manual.r : 0.0f;
+                        _actuators.control[2] = (PX4_ISFINITE(-_manual.y)) ? -_manual.y : 0.0f;
 
                         /*Added lines for p-control of VPP testbed system model:*/
                         //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
 
                         //if (_rc_channels.channels[4] > 0.0f){    //switch is down --> continuous setpoint
-                            vpp_setpoint = 10.0f*_rc_channels.channels[2]+10.0f; //range from 10 to 20 m/s
+                            //vpp_setpoint = 10.0f*_rc_channels.channels[2]+10.0f; //range from 10 to 20 m/s
+                            vpp_setpoint = 10.0f*_manual.z+10.0f; //range from 10 to 20 m/s
                         //} else {    //setpoint switch is up --> discrete setpoints (two of them)
                             //if (_rc_channels.channels[1] < -0.2f) {
                             //    vpp_setpoint = 0.3f;
@@ -1004,6 +1010,17 @@ void FixedwingAttitudeControl::run()
                         vpp_thrust = _manual.z; //Assume that thrust is manual unless changed
 
                         if (_rc_channels.channels[5] < 0.25f){  //if 3-way switch is not down (not away from pilot), do prop pitch control
+                            /*Initialize regression quantities*/
+                            if(!was_controlling_pitch)
+                            {
+                                for (int i = 0;i<len_avg;i++)
+                                {
+                                    pSam(i) = Power; //Start out with uniform power values
+                                    bSam(i) = u_beta; //Start out with uniform pitch values
+                                }
+                                was_controlling_pitch = true;
+                            }
+
                             // Equations:
                             if (((hrt_absolute_time()-t_prev)>=del_t) & (cnt >=nSamples))
                             {
@@ -1023,7 +1040,23 @@ void FixedwingAttitudeControl::run()
                                 inv(testMat,invXreg);
                                 temp = invXreg*Xreg.transpose()*pSam;
 
-                                if (fabs(temp(0))>m_crit)
+                                //Calcuate min and max stored beta values:
+                                bMax = bSam(0);
+                                bMin = bSam(0);
+                                for (int i=1;i<len_avg;i++)
+                                {
+                                    if (bSam(i)<bMin)
+                                    {
+                                        bMin = bSam(i);
+                                    }
+                                    else if (bSam(i)>bMax)
+                                    {
+                                        bMax = bSam(i);
+                                    }
+                                }
+
+
+                                if ((fabs(temp(0))>m_crit) & ((bMax-bMin)>beta_spread))
                                 {
                                     //Do super P&O:
                                     u_beta_sp = u_beta-(temp(0)/100.0f)*delbeta; //Variable-step
@@ -1034,6 +1067,7 @@ void FixedwingAttitudeControl::run()
                                     if (del_P >= 0)
                                         dir *= -1;
                                     u_beta_sp = u_beta+dir*0.1f*fabs(del_P)*delbeta/(1+fabs(wNow-wPrev)/100.0f); //Variable-step w/ motorspeed change detection.
+                                    //u_beta_sp = u_beta+dir*delbeta/(1+fabs(wNow-wPrev)/100.0f); //Fixed-step w/ motorspeed change detection.
                                 }
                                 wPrev = wNow;
                                 p_prev = pws/cnt;
@@ -1057,15 +1091,21 @@ void FixedwingAttitudeControl::run()
                                 u_beta = A*u_beta + (1-A)*u_beta_sp;
                             }
                             /*Saturation limits on the propeller pitch angle*/
-                            if (u_beta<=-1) {
-                                u_beta = -1;
-                            } else if (u_beta>=1) {
-                                u_beta = 1;
+                            //These limits are the same as what are in the mixer
+                            if (u_beta<=-0.3f) {
+                                u_beta = -0.3f;
+                            } else if (u_beta>=0.9f) {
+                                u_beta = 0.9f;
                             }
 
                             if (_rc_channels.channels[5] < -0.25f) //if 3-way switch is up (toward pilot), add airspeed control
                             {
                                 //PID control equations based on error in airspeed:
+                                if (!was_controlling_throttle)
+                                {
+                                    arm_error_int = (vpp_thrust-vpp_kp*arm_error)/vpp_ki; //initialize PID error history to match current condition.
+                                    was_controlling_throttle = true;
+                                }
 
                                 //aircraft_pitch = cos(asin(2.0f*(_v_att.q[0]*_v_att.q[2]-_v_att.q[3]*_v_att.q[1]))-3.14f*0.5f);
                                 //arm_error = vpp_setpoint - aircraft_pitch;
@@ -1078,12 +1118,38 @@ void FixedwingAttitudeControl::run()
                                 arm_error_prev = arm_error;
                                 vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
                             }
+                            else
+                            {
+                                if (was_controlling_throttle)
+                                {
+                                    was_controlling_throttle = false;
+                                }
+                            }
+                            /* publish peakseek info */
+                            _peakseek_status.thrust_est = myairspeed;
+                            _peakseek_status.di_dbeta = u_beta_sp;
+                            _peakseek_status.dt_dbeta = vpp_setpoint;
+                            _peakseek_status.deta_dbeta = p_prev;
+                            _peakseek_status.delbeta = temp(0);
+                            _peakseek_status.timestamp = hrt_absolute_time();
+
+                            if (_peakseek_status_pub != nullptr) {
+                                    orb_publish(ORB_ID(peakseek_status), _peakseek_status_pub, &_peakseek_status);
+
+                            } else {
+                                    _peakseek_status_pub = orb_advertise(ORB_ID(peakseek_status), &_peakseek_status);
+                            }
+
                         } else {    //Full manual mode, write out manual commands
                             //vpp_thrust = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
                             vpp_thrust = _manual.z;
                             /*Also, reset arm integral error to zero*/
                             arm_error_int = 0;
                             u_beta = _rc_channels.channels[6];
+                            if (was_controlling_pitch)
+                            {
+                                was_controlling_pitch = false;
+                            }
                         }
                         _actuators.control[3] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
                         //_actuators.control[3] = (PX4_ISFINITE(_manual_control_sp.z)) ? _manual_control_sp.z : 0.0f;
@@ -1092,20 +1158,7 @@ void FixedwingAttitudeControl::run()
                         _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
                         _actuators.control[6] = (PX4_ISFINITE(0.01f*temp(0))) ? 0.01f*temp(0) : 0.0f;
 
-                        /* publish peakseek info */
-                        //_peakseek_status.thrust_est = T;
-                        //_peakseek_status.di_dbeta = dI_dbeta;
-                        //_peakseek_status.dt_dbeta = dT_dbeta;
-                        //_peakseek_status.deta_dbeta = deta_dbeta;
-                        //_peakseek_status.delbeta = delbeta;
-                        //_peakseek_status.timestamp = hrt_absolute_time();
 
-                        if (_peakseek_status_pub != nullptr) {
-                                orb_publish(ORB_ID(peakseek_status), _peakseek_status_pub, &_peakseek_status);
-
-                        } else {
-                                _peakseek_status_pub = orb_advertise(ORB_ID(peakseek_status), &_peakseek_status);
-                        }
                         /*********End VPP addition**********/
                         /*********************************************************************/
 
