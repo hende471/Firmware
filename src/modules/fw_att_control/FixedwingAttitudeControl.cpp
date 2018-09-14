@@ -513,9 +513,9 @@ void FixedwingAttitudeControl::run()
         float arm_error_prev = 0.0f;
         float arm_error_der = 0.0f;
         float arm_error = 0.0f;
-        float vpp_kp = 0.4f; //Educated guess for now
-        float vpp_ki = 0.12f; //Educated guess for now
-        float vpp_kd = 0.001f; //Educated guess for now
+        float vpp_kp = 0.8f; //Educated guess for now
+        float vpp_ki = 0.30f; //Educated guess for now
+        float vpp_kd = 0.005f; //Educated guess for now
         bool was_controlling_throttle = false;
 
         /*Common Power Quantities*/
@@ -990,8 +990,8 @@ void FixedwingAttitudeControl::run()
                         //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
 
                         //if (_rc_channels.channels[4] > 0.0f){    //switch is down --> continuous setpoint
-                            //vpp_setpoint = 10.0f*_rc_channels.channels[2]+10.0f; //range from 10 to 20 m/s
-                            vpp_setpoint = 10.0f*_manual.z+10.0f; //range from 10 to 20 m/s
+                            vpp_setpoint = 20.0f*_manual.z; //range from 0 to 20 m/s
+                            //vpp_setpoint = 10.0f*_manual.z+10.0f; //range from 10 to 20 m/s
                         //} else {    //setpoint switch is up --> discrete setpoints (two of them)
                             //if (_rc_channels.channels[1] < -0.2f) {
                             //    vpp_setpoint = 0.3f;
@@ -1111,9 +1111,16 @@ void FixedwingAttitudeControl::run()
                                 //arm_error = vpp_setpoint - aircraft_pitch;
 
                                 myairspeed = math::max(0.5f, _airspeed_sub.get().indicated_airspeed_m_s);
-                                arm_error = (vpp_setpoint - myairspeed)/10.0f; //Normalized
+                                arm_error = (vpp_setpoint - myairspeed)/20.0f; //Normalized
 
                                 arm_error_int = arm_error_int+arm_error*deltaT;
+
+                                //Put saturation limits on the arm error:
+                                if (arm_error_int >= 0.8f/vpp_ki)
+                                    arm_error_int = 0.8f/vpp_ki;
+                                else if (arm_error_int <= -0.8f/vpp_ki)
+                                    arm_error_int = -0.8f/vpp_ki;
+
                                 arm_error_der = (arm_error-arm_error_prev)/deltaT;
                                 arm_error_prev = arm_error;
                                 vpp_thrust = vpp_kp*arm_error + vpp_ki*arm_error_int+vpp_kd*arm_error_der;
@@ -1156,7 +1163,7 @@ void FixedwingAttitudeControl::run()
 
                         _actuators.control[4] = (PX4_ISFINITE(0.01f*p_prev)) ? 0.01f*p_prev : 0.0f;
                         _actuators.control[5] = (PX4_ISFINITE(u_beta)) ? u_beta : 0.0f;
-                        _actuators.control[6] = (PX4_ISFINITE(0.01f*temp(0))) ? 0.01f*temp(0) : 0.0f;
+                        _actuators.control[6] = (PX4_ISFINITE(vpp_thrust)) ? vpp_thrust : 0.0f;
 
 
                         /*********End VPP addition**********/
