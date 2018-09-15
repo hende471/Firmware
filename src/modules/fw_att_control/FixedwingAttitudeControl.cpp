@@ -982,9 +982,9 @@ void FixedwingAttitudeControl::run()
 
                         /*********************************************************************/
                         /*Control Algorithm Added For VPP:*/
-                        _actuators.control[1] = (PX4_ISFINITE(_rc_channels.channels[1])) ? _rc_channels.channels[1] : 0.0f;
+                        _actuators.control[1] = (PX4_ISFINITE(-_rc_channels.channels[1])) ? -_rc_channels.channels[1] : 0.0f;
                         //_actuators.control[2] = (PX4_ISFINITE(_rc_channels.channels[2])) ? _rc_channels.channels[2] : 0.0f;
-                        _actuators.control[2] = (PX4_ISFINITE(-_manual.y)) ? -_manual.y : 0.0f;
+                        _actuators.control[2] = (PX4_ISFINITE(_manual.y)) ? _manual.y : 0.0f;
 
                         /*Added lines for p-control of VPP testbed system model:*/
                         //_actuators.control[3] = (PX4_ISFINITE(0.2f)) ? 0.2f : 0.0f;
